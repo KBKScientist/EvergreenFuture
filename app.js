@@ -6132,6 +6132,38 @@ class UIController {
                     return;
                 }
 
+                // Detect if this is a scenario file (has name, description, and data wrapper)
+                if (parsed.name && parsed.description && parsed.data) {
+                    console.log('=== DETECTED SCENARIO FILE ===');
+                    console.log('Scenario name:', parsed.name);
+                    console.log('Description:', parsed.description);
+
+                    // Confirm with user before importing as scenario
+                    const confirmMessage = `Import as new scenario?\n\nName: ${parsed.name}\n\nDescription: ${parsed.description}\n\nThis will add it to your scenarios list without affecting your current plan.`;
+                    if (!confirm(confirmMessage)) {
+                        console.log('User cancelled scenario import');
+                        return;
+                    }
+
+                    // Add as a new scenario
+                    const newScenario = {
+                        id: Date.now(),
+                        name: parsed.name,
+                        description: parsed.description,
+                        date: new Date().toISOString(),
+                        data: parsed.data
+                    };
+
+                    this.model.scenarios.push(newScenario);
+                    this.saveData();
+
+                    // Switch to scenarios tab to show the new scenario
+                    document.querySelector('[data-tab="scenarios"]').click();
+
+                    alert(`✓ Scenario "${parsed.name}" imported successfully!\n\nYou can now view it in the Scenarios tab.`);
+                    return;
+                }
+
                 // Use the same loading logic as loadData for consistency
                 this.model.accounts = parsed.accounts || [];
                 this.model.incomes = (parsed.incomes || []).map(inc => ({
