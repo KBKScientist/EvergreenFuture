@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Projection Lab</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Financial Projection Lab</h1>
+            <div class="header-actions">
+                <button id="aiExportBtn" class="btn btn-primary" title="Export plan with AI analysis instructions">🤖 AI Review</button>
+                <button id="saveBtn" class="btn btn-secondary">Save Data</button>
+                <button id="loadBtn" class="btn btn-secondary">Load Data</button>
+                <button id="exportBtn" class="btn btn-secondary">Export</button>
+                <button id="deleteAllBtn" class="btn btn-danger">Delete All Data</button>
+            </div>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
+
+            <div class="tab-group">
+                <button class="tab-group-btn">💰 Finances ▾</button>
+                <div class="tab-dropdown">
+                    <button class="tab-btn" data-tab="accounts">Accounts</button>
+                    <button class="tab-btn" data-tab="income">Income</button>
+                    <button class="tab-btn" data-tab="expenses">Expenses</button>
+                    <button class="tab-btn" data-tab="housing">Housing</button>
+                    <button class="tab-btn" data-tab="debts">Debts</button>
+                </div>
+            </div>
+
+            <div class="tab-group">
+                <button class="tab-group-btn">🎯 Planning ▾</button>
+                <div class="tab-dropdown">
+                    <button class="tab-btn" data-tab="milestones">Milestones</button>
+                    <button class="tab-btn" data-tab="withdrawal">Withdrawal Strategy</button>
+                    <button class="tab-btn" data-tab="scenarios">Scenarios</button>
+                </div>
+            </div>
+
+            <button class="tab-btn" data-tab="taxes">📋 Taxes</button>
+            <button class="tab-btn" data-tab="simulation">🎲 Monte Carlo</button>
+            <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
+        </nav>
+
+        <main>
+            <!-- Dashboard Tab -->
+            <div id="dashboard" class="tab-content active">
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <h2>Net Worth Projection</h2>
+                        <canvas id="netWorthChart"></canvas>
+                    </div>
+                    <div class="card">
+                        <h2>Current Summary</h2>
+                        <div id="summaryStats"></div>
+                    </div>
+                    <div class="card full-width">
+                        <h2>Account Balances Over Time</h2>
+                        <div style="height: 400px;">
+                            <canvas id="accountBalancesChart"></canvas>
+                        </div>
+                        <div style="margin-top: 10px; font-size: 13px; color: var(--text-secondary);">
+                            <strong>📊 Tax Optimization in Action:</strong>
+                            Normally, taxable accounts (green) are withdrawn first, then Traditional IRA/401k (yellow), then Roth (blue).
+                            But in tax bomb years (e.g., student loan forgiveness), the system switches to Roth first to avoid stacking
+                            taxable income - watch for changes in the curve slopes during those years!
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h2>Annual Cash Flow Breakdown</h2>
+                        <div id="cashFlowBreakdown"></div>
+                    </div>
+                    <div class="card full-width">
+                        <h2>Current Cash Flow (Sankey Diagram)</h2>
+                        <div id="sankeyChart"></div>
+                    </div>
+                    <div class="card full-width">
+                        <h2>Future Year Cash Flow Projection</h2>
+                        <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 15px;">
+                            <label style="font-weight: 600;">Select Year:</label>
+                            <select id="futureSankeyYear" style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); min-width: 120px;">
+                            </select>
+                            <button id="updateFutureSankeyBtn" class="btn btn-primary">Generate Projection</button>
+                        </div>
+                        <div id="futureSankeyChart"></div>
+                        <div style="margin-top: 15px; padding: 12px; background: var(--primary-light); border-radius: 8px; font-size: 13px; color: var(--text-secondary);">
+                            <strong>💡 Understanding Cash Flow:</strong><br>
+                            • <strong>Portfolio Withdrawals:</strong> Cash taken from your investment accounts to spend<br>
+                            • <strong>Investment Returns:</strong> Not shown here because they stay invested (see Annual Cash Flow Breakdown for full picture)<br>
+                            • <strong>Current Limitation:</strong> Model pools all accounts together - doesn't distinguish between taxable/Traditional IRA/Roth IRA withdrawals
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="settings" class="tab-content">
+                <div class="card">
+                    <h2>Plan Settings</h2>
+                    <p style="color: #64748b; margin-bottom: 20px;">Configure your household information and plan parameters. This information is used throughout the tool for calculations and projections.</p>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                        <div class="form-group">
+                            <label>Plan Start Year</label>
+                            <input type="number" id="planStartYear" min="2020" max="2100">
+                        </div>
+                        <div class="form-group">
+                            <label>Projection Horizon (years)</label>
+                            <input type="number" id="projectionHorizon" value="40" min="10" max="80">
+                        </div>
+                        <div class="form-group">
+                            <label>Inflation Rate (%)</label>
+                            <input type="number" id="inflationRate" value="3.0" step="0.1" min="0" max="10">
+                        </div>
+                        <div class="form-group">
+                            <label>Filing Status</label>
+                            <select id="householdFilingStatus">
+                                <option value="single">Single</option>
+                                <option value="married">Married Filing Jointly</option>
+                                <option value="hoh">Head of Household</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Person A (Primary)</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="personAName" placeholder="e.g., Alex">
+                        </div>
+                        <div class="form-group">
+                            <label>Birth Year</label>
+                            <input type="number" id="personABirthYear" min="1920" max="2020">
+                        </div>
+                        <div class="form-group">
+                            <label>Retirement Year</label>
+                            <input type="number" id="personARetirementYear" min="2024" max="2100">
+                        </div>
+                        <div class="form-group">
+                            <label>Life Expectancy (age)</label>
+                            <input type="number" id="personALifeExpectancy" value="95" min="60" max="120">
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; padding: 15px; background: var(--primary-light); border-radius: 8px;">
+                        <div style="color: var(--text-secondary); font-size: 14px;">
+                            <strong>Current Age:</strong> <span id="personACurrentAge">-</span> |
+                            <strong>Retirement Age:</strong> <span id="personARetirementAge">-</span> |
+                            <strong>Years to Retirement:</strong> <span id="personAYearsToRetirement">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h2 style="margin: 0;">Person B (Partner/Spouse)</h2>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="enablePersonB">
+                            <span style="font-weight: 500;">Enable Person B</span>
+                        </label>
+                    </div>
+
+                    <div id="personBFields" style="display: none;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                            <div class="form-group">
+                                <label>Name</label>
+                                <input type="text" id="personBName" placeholder="e.g., Jordan">
+                            </div>
+                            <div class="form-group">
+                                <label>Birth Year</label>
+                                <input type="number" id="personBBirthYear" min="1920" max="2020">
+                            </div>
+                            <div class="form-group">
+                                <label>Retirement Year</label>
+                                <input type="number" id="personBRetirementYear" min="2024" max="2100">
+                            </div>
+                            <div class="form-group">
+                                <label>Life Expectancy (age)</label>
+                                <input type="number" id="personBLifeExpectancy" value="95" min="60" max="120">
+                            </div>
+                        </div>
+                        <div style="margin-top: 15px; padding: 15px; background: var(--primary-light); border-radius: 8px;">
+                            <div style="color: var(--text-secondary); font-size: 14px;">
+                                <strong>Current Age:</strong> <span id="personBCurrentAge">-</span> |
+                                <strong>Retirement Age:</strong> <span id="personBRetirementAge">-</span> |
+                                <strong>Years to Retirement:</strong> <span id="personBYearsToRetirement">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Retirement Income</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 20px;">Configure Social Security, pensions, and other retirement income sources. These will automatically start at the specified ages.</p>
+
+                    <div style="border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; background: var(--bg-color); margin-bottom: 20px;">
+                        <h3 style="font-size: 1.1rem; margin-bottom: 15px;">Person A - Social Security</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                            <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="personASocialSecurityEnabled">
+                                <label for="personASocialSecurityEnabled" style="margin: 0;">Enable</label>
+                            </div>
+                            <div class="form-group">
+                                <label>Annual Amount ($)</label>
+                                <input type="number" id="personASocialSecurityAmount" placeholder="e.g., 30000" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label>Start Age (62-70)</label>
+                                <input type="number" id="personASocialSecurityStartAge" value="67" min="62" max="70" disabled>
+                            </div>
+                        </div>
+                        <p style="color: var(--text-secondary); font-size: 13px; margin-top: 10px;">
+                            💡 Delaying benefits increases monthly payments: 62=70%, 67=100%, 70=124%<br>
+                            📈 SS benefits automatically include COLA (Cost of Living Adjustment) matching your inflation rate
+                        </p>
+                    </div>
+
+                    <div id="personBRetirementIncome" style="border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; background: var(--bg-color); margin-bottom: 20px; display: none;">
+                        <h3 style="font-size: 1.1rem; margin-bottom: 15px;">Person B - Social Security</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                            <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="personBSocialSecurityEnabled">
+                                <label for="personBSocialSecurityEnabled" style="margin: 0;">Enable</label>
+                            </div>
+                            <div class="form-group">
+                                <label>Annual Amount ($)</label>
+                                <input type="number" id="personBSocialSecurityAmount" placeholder="e.g., 30000" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label>Start Age (62-70)</label>
+                                <input type="number" id="personBSocialSecurityStartAge" value="67" min="62" max="70" disabled>
+                            </div>
+                        </div>
+                        <p style="color: var(--text-secondary); font-size: 13px; margin-top: 10px;">
+                            💡 Delaying benefits increases monthly payments: 62=70%, 67=100%, 70=124%<br>
+                            📈 SS benefits automatically include COLA (Cost of Living Adjustment) matching your inflation rate
+                        </p>
+                    </div>
+
+                    <div style="border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; background: var(--bg-color);">
+                        <h3 style="font-size: 1.1rem; margin-bottom: 15px;">Pension / Other Retirement Income</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="pensionEnabled">
+                                <label for="pensionEnabled" style="margin: 0;">Enable</label>
+                            </div>
+                            <div class="form-group">
+                                <label>Owner</label>
+                                <select id="pensionOwner" disabled>
+                                    <option value="personA">Person A</option>
+                                    <option value="personB">Person B</option>
+                                    <option value="household">Household</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Name</label>
+                                <input type="text" id="pensionName" placeholder="e.g., Company Pension" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label>Annual Amount ($)</label>
+                                <input type="number" id="pensionAmount" placeholder="e.g., 24000" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label>Start Year</label>
+                                <input type="number" id="pensionStartYear" min="2024" max="2100" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label>Annual Growth (%)</label>
+                                <input type="number" id="pensionGrowth" value="0" step="0.1" disabled>
+                            </div>
+                        </div>
+                        <p style="color: var(--text-secondary); font-size: 13px; margin-top: 10px;">💡 Use the Income tab for multiple pensions or more complex scenarios</p>
+                    </div>
+                </div>
+
+                <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none;">
+                    <p style="margin-bottom: 15px; text-align: center; font-weight: 500;">⚠️ Don't forget to click Save Settings to persist your changes!</p>
+                    <button id="saveSettingsBtn" class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 16px; background: white; color: #667eea; font-weight: 600;">💾 Save Settings</button>
+                </div>
+
+                <div id="validationDisplay" class="card" style="display: none;">
+                    <h2>Validation Status</h2>
+                    <div id="validationErrors"></div>
+                    <div id="validationWarnings"></div>
+                </div>
+
+                <div class="card" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">About Settings</h3>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Why set this up?</strong> These settings ensure accurate calculations throughout the tool. Previously, the tool assumed you were 30 years old - now it uses your actual information.</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Key Fields:</strong></p>
+                    <ul style="color: #64748b; margin-left: 20px; margin-bottom: 10px;">
+                        <li><strong>Plan Start Year:</strong> The current year or when you want projections to begin</li>
+                        <li><strong>Birth Year:</strong> Used to calculate current age and ages at milestones</li>
+                        <li><strong>Retirement Year:</strong> When you plan to stop working - used to auto-calculate withdrawal start</li>
+                        <li><strong>Life Expectancy:</strong> Plan to age 95+ for safety - better to overestimate</li>
+                        <li><strong>Person B:</strong> Enable this for couples to track both partners' retirement timelines</li>
+                    </ul>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Impact:</strong></p>
+                    <ul style="color: #64748b; margin-left: 20px;">
+                        <li>Ages are now calculated accurately throughout the tool</li>
+                        <li>Withdrawal start year is auto-calculated from retirement year (unless you override it)</li>
+                        <li>AI export will include your actual demographic information for better analysis</li>
+                        <li>Validation will catch common errors (retirement before current age, etc.)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Accounts Tab -->
+            <div id="accounts" class="tab-content">
+                <div class="card">
+                    <h2>Accounts</h2>
+                    <button id="addAccountBtn" class="btn btn-primary">+ Add Account</button>
+                    <div id="accountsList"></div>
+                </div>
+
+                <div class="card" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">About Accounts & Tax Treatment</h3>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>What are accounts?</strong> These are your existing financial accounts - the money you already have.</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Account Types & Tax Treatment:</strong></p>
+                    <ul style="color: #64748b; margin-left: 20px; line-height: 1.6;">
+                        <li><strong>Checking/Savings:</strong> Low interest, liquid cash (0-1% interest rate) - Interest taxed annually</li>
+                        <li><strong>Taxable Investment:</strong> Brokerage accounts - Capital gains and dividends are taxed</li>
+                        <li><strong>Traditional 401k/IRA:</strong> Tax-deferred growth - You pay taxes when you withdraw (withdrawals counted as income)</li>
+                        <li><strong>Roth 401k/IRA:</strong> Tax-free growth - Already paid taxes, withdrawals are tax-free after age 59½</li>
+                        <li><strong>HSA:</strong> Triple tax-advantaged for medical expenses</li>
+                    </ul>
+                    <div style="background: #dcfce7; border-left: 4px solid #22c55e; padding: 12px; margin-top: 15px; border-radius: 4px;">
+                        <strong style="color: #166534;">✅ Tax Treatment:</strong>
+                        <p style="color: #166534; margin: 5px 0 0 0; font-size: 14px;">
+                            The model now automatically taxes Traditional 401k/IRA withdrawals as ordinary income. Withdrawals are proportionally allocated across account types based on your current balances.
+                        </p>
+                    </div>
+                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin-top: 15px; border-radius: 4px;">
+                        <strong style="color: #856404;">⚠️ Current Limitations:</strong>
+                        <p style="color: #856404; margin: 5px 0 0 0; font-size: 14px;">
+                            • Accounts are pooled together - withdrawals are proportional, not optimized for tax efficiency<br>
+                            • No smart withdrawal ordering (e.g., Taxable → Traditional → Roth in typical cases)<br>
+                            • Early withdrawal penalties (before 59½) not modeled<br>
+                            • RMDs (Required Minimum Distributions) calculated but not enforced as minimum
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Income Tab -->
+            <div id="income" class="tab-content">
+                <div class="card">
+                    <h2>Income Sources</h2>
+                    <button id="addIncomeBtn" class="btn btn-primary">+ Add Income</button>
+                    <div id="incomeList"></div>
+                </div>
+
+                <div class="card" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">About Income</h3>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>What is income?</strong> Regular money coming in - salary, side hustles, Social Security, pensions, etc.</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Key Settings:</strong></p>
+                    <ul style="color: #64748b; margin-left: 20px;">
+                        <li><strong>Category:</strong> Group similar income types together - they'll be combined in the cash flow diagram</li>
+                        <li><strong>Start/End Year:</strong> When this income begins and ends (e.g., salary ends at retirement)</li>
+                        <li><strong>Growth Rate:</strong> Annual raises/increases (typical: 2-4% for salary, 0% for fixed pensions)</li>
+                        <li><strong>Frequency:</strong> Monthly amounts are multiplied by 12 for annual calculations</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Expenses Tab -->
+            <div id="expenses" class="tab-content">
+                <div class="card">
+                    <h2>Expenses</h2>
+                    <button id="addExpenseBtn" class="btn btn-primary">+ Add Expense</button>
+                    <div id="expensesList"></div>
+                </div>
+
+                <div class="card" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">About Expenses</h3>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>What are expenses?</strong> Regular recurring costs - rent/mortgage, utilities, food, transportation, etc.</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Tips:</strong></p>
+                    <ul style="color: #64748b; margin-left: 20px;">
+                        <li><strong>Categories:</strong> Choose from 17+ categories for detailed cash flow visualization (Housing, Food, Transportation, Healthcare, Insurance, Debt, Education, Childcare, Travel, and more)</li>
+                        <li><strong>Growth Rate:</strong> Most expenses increase with inflation (use 2-3% for general expenses, 3-4% for healthcare, 0% for fixed debt payments)</li>
+                        <li><strong>End Year:</strong> Set for expenses that will end (e.g., mortgage payoff, kids' expenses when they move out, debt paid off)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Milestones Tab -->
+            <!-- Housing Tab -->
+            <div id="housing" class="tab-content">
+                <div class="card">
+                    <h2>Housing</h2>
+                    <div class="button-group" style="margin-bottom: 20px;">
+                        <label>
+                            <input type="radio" name="housingStatus" value="rent" checked>
+                            <span>Rent</span>
+                        </label>
+                        <label>
+                            <input type="radio" name="housingStatus" value="own">
+                            <span>Own</span>
+                        </label>
+                    </div>
+
+                    <div id="rentalSection">
+                        <h3>Rental Details</h3>
+                        <div class="form-group">
+                            <label>Monthly Rent ($)</label>
+                            <input type="number" id="monthlyRent" value="0" step="100">
+                        </div>
+                        <div class="form-group">
+                            <label>Annual Rent Increase (%)</label>
+                            <input type="number" id="rentIncrease" value="3" step="0.1">
+                        </div>
+                        <button class="btn btn-primary" id="saveRentalBtn">Save Rental Info</button>
+                    </div>
+
+                    <div id="ownershipSection" style="display: none;">
+                        <h3>Owned Properties</h3>
+                        <button class="btn btn-primary" id="addPropertyBtn">+ Add Property</button>
+                        <div id="propertiesList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Debts Tab -->
+            <div id="debts" class="tab-content">
+                <div class="card">
+                    <h2>Debt Tracking</h2>
+
+                    <div style="margin-bottom: 30px;">
+                        <h3>Credit Cards</h3>
+                        <button class="btn btn-primary" id="addCreditCardBtn">+ Add Credit Card</button>
+                        <div id="creditCardsList"></div>
+                    </div>
+
+                    <div>
+                        <h3>Loans</h3>
+                        <button class="btn btn-primary" id="addLoanBtn">+ Add Loan</button>
+                        <div id="loansList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="milestones" class="tab-content">
+                <div class="card">
+                    <h2>Life Milestones</h2>
+                    <button id="addMilestoneBtn" class="btn btn-primary">+ Add Milestone</button>
+                    <div id="milestonesList"></div>
+                </div>
+
+                <div class="card" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">How to Use Milestones</h3>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>What are milestones?</strong> Milestones are major financial events that happen at specific times in your life. They can be expenses (money going out) or windfalls (money coming in).</p>
+
+                    <div style="background: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 12px; margin-bottom: 15px; border-radius: 4px;">
+                        <strong style="color: #0369a1;">ℹ️ Note about Retirement:</strong>
+                        <p style="color: #0369a1; margin: 5px 0 0 0; font-size: 14px;">
+                            Set your retirement year in the Settings page (Person A/B section). The "Retirement" milestone type is for retirement-related <strong>expenses</strong> like parties, relocation costs, or RV purchases - not for defining when retirement happens.
+                        </p>
+                    </div>
+
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Positive vs. Negative Milestones:</strong></p>
+                    <ul style="color: #64748b; margin-left: 20px; margin-bottom: 10px;">
+                        <li><strong>Positive (💰):</strong> Check "Is this a positive event?" for money coming TO you - inheritance, bonuses, sale of property, insurance payouts</li>
+                        <li><strong>Negative:</strong> Leave unchecked for money going OUT - home purchase, car purchase, education expenses, major medical bills, retirement party</li>
+                    </ul>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>One-time vs. Recurring:</strong></p>
+                    <ul style="color: #64748b; margin-left: 20px;">
+                        <li><strong>One-time Amount:</strong> Happens only in the specified year (e.g., $50,000 home down payment in 2030)</li>
+                        <li><strong>Recurring:</strong> Check the box and set an annual amount that continues every year after the milestone year (e.g., $5,000/year for travel starting at retirement)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Withdrawal Strategies Tab -->
+            <div id="withdrawal" class="tab-content">
+                <div class="card">
+                    <h2>Retirement Withdrawal Strategy</h2>
+                    <p style="color: #64748b; margin-bottom: 20px;">Configure how you'll withdraw funds during retirement. This affects your projection calculations and Monte Carlo simulations.</p>
+
+                    <div class="form-group" style="background: var(--primary-light); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <label style="font-weight: 600;">Withdrawal Start Year (Optional)</label>
+                        <input type="number" id="withdrawalStartYear" placeholder="Leave blank for auto-calculation" min="2024" max="2100" style="margin-top: 8px;">
+                        <small style="color: var(--text-secondary); display: block; margin-top: 8px;">
+                            <strong>Auto-calculation:</strong> Uses the earliest retirement year from Settings page (Person A or Person B), or the first year when income drops below expenses.
+                            <br><strong>Manual override:</strong> Enter a specific year to force withdrawals to start then, regardless of retirement years.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Withdrawal Strategy</label>
+                        <select id="withdrawalStrategy">
+                            <option value="fixed_percentage">Fixed Percentage (4% Rule)</option>
+                            <option value="fixed_amount">Fixed Dollar Amount</option>
+                            <option value="dynamic">Dynamic (Guyton-Klinger)</option>
+                            <option value="rmd">Required Minimum Distributions (RMDs)</option>
+                        </select>
+                    </div>
+
+                    <div id="fixedPercentageSettings" class="withdrawal-settings">
+                        <div class="form-group">
+                            <label>Withdrawal Percentage <small>(typical: 3-4%)</small></label>
+                            <input type="number" id="withdrawalPercentage" value="4" min="1" max="10" step="0.1">
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="inflationAdjusted" checked>
+                            <label for="inflationAdjusted" style="margin: 0;">Adjust for inflation each year (Traditional 4% Rule)</label>
+                        </div>
+                        <p style="color: var(--text-secondary); font-size: 13px; margin-top: 5px;">
+                            <strong>Checked:</strong> Take 4% of initial portfolio in year 1, then increase that dollar amount by inflation each year (more predictable spending)<br>
+                            <strong>Unchecked:</strong> Take 4% of CURRENT portfolio each year (spending varies with market, more conservative)
+                        </p>
+                    </div>
+
+                    <div id="fixedAmountSettings" class="withdrawal-settings" style="display: none;">
+                        <div class="form-group">
+                            <label>Annual Withdrawal Amount ($)</label>
+                            <input type="number" id="fixedWithdrawalAmount" value="40000" min="0" step="1000">
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="fixedInflationAdjusted" checked>
+                            <label for="fixedInflationAdjusted" style="margin: 0;">Adjust for inflation each year</label>
+                        </div>
+                    </div>
+
+                    <div id="dynamicSettings" class="withdrawal-settings" style="display: none;">
+                        <div class="form-group">
+                            <label>Initial Withdrawal Rate (%)</label>
+                            <input type="number" id="dynamicInitialRate" value="5" min="1" max="10" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label>Upper Guardrail (% above initial) <small>Increase spending if portfolio grows</small></label>
+                            <input type="number" id="dynamicUpperGuardrail" value="20" min="0" max="50" step="5">
+                        </div>
+                        <div class="form-group">
+                            <label>Lower Guardrail (% below initial) <small>Decrease spending if portfolio shrinks</small></label>
+                            <input type="number" id="dynamicLowerGuardrail" value="20" min="0" max="50" step="5">
+                        </div>
+                    </div>
+
+                    <div id="rmdSettings" class="withdrawal-settings" style="display: none;">
+                        <p style="color: #64748b; margin-bottom: 15px;">RMDs are calculated using IRS Uniform Lifetime Table based on your age. Withdrawals begin at age 73 (as of 2024 rules).</p>
+                        <div class="form-group">
+                            <label>RMD Start Age</label>
+                            <input type="number" id="rmdStartAge" value="73" min="59" max="75">
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="background: var(--primary-light); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">Withdrawal Mode</label>
+                        <div style="margin-bottom: 10px;">
+                            <label style="display: flex; align-items: center; cursor: pointer; padding: 8px;">
+                                <input type="radio" name="withdrawalMode" value="always" checked style="margin-right: 10px;">
+                                <div>
+                                    <strong>Always apply strategy</strong>
+                                    <div style="color: var(--text-secondary); font-size: 13px; margin-top: 3px;">Withdraw according to strategy even when income exceeds expenses</div>
+                                </div>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer; padding: 8px;">
+                                <input type="radio" name="withdrawalMode" value="deficit_only" style="margin-right: 10px;">
+                                <div>
+                                    <strong>Only withdraw to cover deficits</strong>
+                                    <div style="color: var(--text-secondary); font-size: 13px; margin-top: 3px;">Only withdraw when income < expenses (more conservative)</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button id="saveWithdrawalStrategyBtn" class="btn btn-primary">Save Withdrawal Strategy</button>
+                </div>
+
+                <div class="card" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">About Withdrawal Strategies</h3>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Why does this matter?</strong> The strategy you choose can significantly impact how long your money lasts in retirement.</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Strategy Explanations:</strong></p>
+                    <ul style="color: #64748b; margin-left: 20px;">
+                        <li><strong>4% Rule:</strong> Withdraw 4% of your portfolio in year 1, then adjust for inflation. Simple and historically safe.</li>
+                        <li><strong>Fixed Dollar:</strong> Withdraw a specific amount each year, adjusted for inflation. Good if you know your expenses.</li>
+                        <li><strong>Dynamic (Guyton-Klinger):</strong> Adjusts spending based on portfolio performance. Increase spending when portfolio grows beyond guardrails, decrease when it shrinks.</li>
+                        <li><strong>RMDs:</strong> Required withdrawals from retirement accounts starting at age 73. Amounts increase with age based on IRS tables.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Scenario Comparison Tab -->
+            <div id="scenarios" class="tab-content">
+                <div class="card">
+                    <h2>Scenario Comparison</h2>
+                    <p style="color: #64748b; margin-bottom: 20px;">Save and compare different financial plans side-by-side. Great for testing "what if" scenarios like retiring earlier, moving to a different city, or changing careers.</p>
+
+                    <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                        <button id="saveScenarioBtn" class="btn btn-primary">💾 Save Current as Scenario</button>
+                        <button id="clearScenariosBtn" class="btn btn-danger">🗑️ Clear All Scenarios</button>
+                    </div>
+
+                    <div id="scenariosList"></div>
+                </div>
+
+                <div class="card" id="scenarioComparisonCard" style="display: none;">
+                    <h2>Comparison Chart</h2>
+                    <canvas id="scenarioComparisonChart"></canvas>
+                </div>
+
+                <div class="card" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">How to Use Scenarios</h3>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Step 1:</strong> Set up your current financial plan with all accounts, income, and expenses.</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Step 2:</strong> Click "Save Current as Scenario" and give it a name (e.g., "Base Plan").</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Step 3:</strong> Make changes to test a different approach (e.g., retire 5 years earlier, buy a vacation home, etc.).</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Step 4:</strong> Save this as a new scenario (e.g., "Early Retirement").</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Step 5:</strong> Compare the scenarios to see which plan works best for you!</p>
+                    <p style="color: #64748b;"><strong>Tip:</strong> You can load any saved scenario to modify it further or use it as your active plan.</p>
+                </div>
+            </div>
+
+            <!-- Monte Carlo Simulation Tab -->
+            <div id="simulation" class="tab-content">
+                <div class="card">
+                    <h2>Investment Glide Path</h2>
+                    <p style="color: #64748b; margin-bottom: 15px;">Define how your investment allocation (and expected returns) change over time. Typically, you'd start aggressive and become more conservative as you approach retirement.</p>
+                    <button id="addGlidePathBtn" class="btn btn-primary">+ Add Time Period</button>
+                    <div id="glidePathList"></div>
+                </div>
+
+                <div class="card">
+                    <h2>Monte Carlo Simulation</h2>
+                    <div class="simulation-controls">
+                        <label>Number of Simulations: <input type="number" id="numSimulations" value="1000" min="100" max="10000"></label>
+                        <button id="runSimulationBtn" class="btn btn-primary">Run Simulation</button>
+                    </div>
+                    <div id="simulationResults">
+                        <canvas id="simulationChart"></canvas>
+                        <div id="simulationStats"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>🔥 Stress Test Scenarios</h2>
+                    <p style="color: #64748b; margin-bottom: 15px;">See how your plan holds up during market crashes and economic downturns.</p>
+
+                    <div style="margin-bottom: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 8px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600;">When should the crash occur?</label>
+                        <div style="display: flex; gap: 15px; align-items: center;">
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="radio" name="stressTestTiming" value="now" checked>
+                                <span>Right now (Year 1)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="radio" name="stressTestTiming" value="custom">
+                                <span>Custom year:</span>
+                            </label>
+                            <input type="number" id="stressTestYear" placeholder="e.g., 10" min="1" max="40" style="width: 80px;" disabled>
+                            <small style="color: var(--text-secondary);">(years from now)</small>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
+                        <button id="stressTest2008" class="btn btn-secondary">📉 2008 Financial Crisis</button>
+                        <button id="stressTest2000" class="btn btn-secondary">💥 2000 Dot-com Crash</button>
+                        <button id="stressTest2020" class="btn btn-secondary">🦠 2020 COVID Crash</button>
+                        <button id="stressTestStagflation" class="btn btn-secondary">📊 1970s Stagflation</button>
+                        <button id="stressTestCustom" class="btn btn-secondary">⚙️ Custom Scenario</button>
+                    </div>
+                    <div id="stressTestResults" style="display: none;">
+                        <canvas id="stressTestChart"></canvas>
+                        <div id="stressTestStats" style="margin-top: 15px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Taxes Tab -->
+            <div id="taxes" class="tab-content">
+                <div class="card">
+                    <h2>Tax Projections</h2>
+                    <div class="tax-settings">
+                        <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                            Filing status is set in the Settings page. Currently using: <strong id="currentFilingStatus"></strong>
+                        </p>
+                        <button id="updateTaxProjectionsBtn" class="btn btn-primary">Update Projections</button>
+                    </div>
+                    <canvas id="taxChart"></canvas>
+                    <div id="taxProjections"></div>
+                </div>
+
+                <div class="card" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">About Tax Projections</h3>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>What's shown here?</strong> This tab projects your federal income taxes based on your income sources. State taxes are not included.</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Tax Brackets (2024):</strong> The calculator uses progressive 2024 federal tax brackets. You pay different rates on different portions of your income.</p>
+                    <p style="color: #64748b; margin-bottom: 10px;"><strong>Important Notes:</strong></p>
+                    <ul style="color: #64748b; margin-left: 20px; margin-bottom: 10px;">
+                        <li>This is a simplified calculation - actual taxes depend on many factors</li>
+                        <li>Deductions, credits, and tax-advantaged accounts can significantly reduce your tax bill</li>
+                        <li>Consult a tax professional for accurate tax planning</li>
+                        <li>The projection assumes standard deduction and doesn't account for itemized deductions</li>
+                    </ul>
+                    <p style="color: #64748b;"><strong>Tip:</strong> Retirement account types (Traditional 401k/IRA, Roth IRA, HSA) are automatically categorized by tax treatment. Traditional accounts are taxed on withdrawal, Roth accounts have tax-free withdrawals, and HSAs are tax-advantaged for medical expenses.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
