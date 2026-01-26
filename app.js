@@ -6851,6 +6851,65 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' â†
                 }
             },
 
+            "housing": {
+                "status": this.model.housing.status,
+                "rental": this.model.housing.status === 'rent' && this.model.housing.rent ? {
+                    "monthly_rent": this.model.housing.rent.monthlyRent,
+                    "annual_rent": this.model.housing.rent.monthlyRent * 12,
+                    "start_year": this.model.housing.rent.startYear,
+                    "end_year": this.model.housing.rent.endYear,
+                    "inflation_rate": this.model.housing.rent.inflationRate,
+                    "_note": "Rent increases annually by inflation_rate"
+                } : null,
+                "owned_properties": this.model.housing.ownedProperties.map(prop => ({
+                    "name": prop.name,
+                    "purchase_year": prop.purchaseYear,
+                    "purchase_price": prop.purchasePrice,
+                    "down_payment": prop.downPayment,
+                    "closing_costs": prop.closingCosts,
+                    "loan_amount": prop.loanAmount,
+                    "interest_rate": prop.interestRate,
+                    "loan_term_years": prop.loanTermYears,
+                    "monthly_mortgage_payment": Math.round(prop.monthlyPayment),
+                    "annual_mortgage_payment": Math.round(prop.monthlyPayment * 12),
+                    "property_tax_rate": prop.propertyTaxRate,
+                    "annual_insurance": prop.insuranceAnnual,
+                    "monthly_hoa": prop.hoaMonthly,
+                    "annual_hoa": prop.hoaMonthly * 12,
+                    "maintenance_rate": prop.maintenanceRate,
+                    "appreciation_rate": prop.appreciationRate,
+                    "extra_payment_monthly": prop.extraPaymentMonthly,
+                    "sell_year": prop.sellYear,
+                    "selling_costs_percent": prop.sellingCosts,
+                    "_annual_costs_breakdown": {
+                        "mortgage": Math.round(prop.monthlyPayment * 12),
+                        "property_tax": Math.round(prop.purchasePrice * (prop.propertyTaxRate / 100)) + " (first year, increases with home value)",
+                        "insurance": prop.insuranceAnnual,
+                        "hoa": prop.hoaMonthly * 12,
+                        "maintenance": Math.round(prop.purchasePrice * (prop.maintenanceRate / 100)) + " (first year, increases with home value)",
+                        "total_first_year": Math.round(prop.monthlyPayment * 12 + prop.purchasePrice * (prop.propertyTaxRate / 100) + prop.insuranceAnnual + prop.hoaMonthly * 12 + prop.purchasePrice * (prop.maintenanceRate / 100))
+                    }
+                })),
+                "_ai_guidance": {
+                    "questions_to_ask": [
+                        "Are property tax and maintenance costs realistic? (Typical: property tax 1-2% of value, maintenance 1-2% of value)",
+                        "Is home insurance adequate? (Typical: $1,000-2,000/year depending on location and home value)",
+                        "Does the user have an emergency fund for major home repairs?",
+                        "Is the user house-rich but cash-poor? (High home equity but low liquid assets)",
+                        "Should the user consider downsizing in retirement to unlock equity?",
+                        "Are HOA fees expected to increase over time?",
+                        "Is the home appreciation rate realistic for the area? (National average: 3-4%)"
+                    ],
+                    "benchmarks": {
+                        "property_tax": "National average: 1.1% of home value annually (varies widely by state: NJ 2.5%, HI 0.3%)",
+                        "home_insurance": "National average: $1,500-2,000/year (higher in disaster-prone areas)",
+                        "maintenance": "Rule of thumb: 1-2% of home value annually for maintenance/repairs",
+                        "hoa_fees": "Typical range: $200-400/month (can be much higher for luxury condos)",
+                        "appreciation": "Historical US average: 3-4% annually (highly location-dependent)"
+                    }
+                }
+            },
+
             "withdrawal_strategy": {
                 "data": this.model.withdrawalStrategy,
                 "strategy_explanation": this.model.withdrawalStrategy.type === 'fixed_percentage' ?
@@ -6907,6 +6966,16 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' â†
                         taxes: Math.round(p.taxes || 0),
                         effective_tax_rate: Math.round(effectiveTaxRate * 10) / 10,
                         expenses: Math.round(p.expenses),
+                        housing_costs_breakdown: {
+                            rent: Math.round(p.rentCost || 0),
+                            mortgage: Math.round(p.mortgageCost || 0),
+                            property_tax: Math.round(p.propertyTaxCost || 0),
+                            insurance: Math.round(p.insuranceCost || 0),
+                            hoa: Math.round(p.hoaCost || 0),
+                            maintenance: Math.round(p.maintenanceCost || 0),
+                            total_housing: Math.round(p.housingCosts || 0)
+                        },
+                        home_equity: Math.round(p.homeEquity || 0),
                         net_cash_flow: Math.round(p.netCashFlow),
                         milestone_costs: Math.round(p.milestoneCosts || 0),
                         milestone_windfalls: Math.round(p.milestoneWindfalls || 0),
