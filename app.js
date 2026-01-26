@@ -7456,6 +7456,185 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' �
         alert(`✓ Scenario "${scenarioName}" saved!`);
     }
 
+    compareScenario(scenarioId) {
+        const scenario = this.model.scenarios.find(s => s.id === scenarioId);
+        if (!scenario) return;
+
+        // Create comparison report
+        let report = `═══════════════════════════════════════════════════════\n`;
+        report += `SCENARIO COMPARISON: "${scenario.name}"\n`;
+        report += `═══════════════════════════════════════════════════════\n\n`;
+
+        if (scenario.description) {
+            report += `Description: ${scenario.description}\n\n`;
+        }
+
+        // Compare accounts
+        report += `───────────────────────────────────────────────────────\n`;
+        report += `ACCOUNTS\n`;
+        report += `───────────────────────────────────────────────────────\n`;
+        const currentAccounts = this.model.accounts;
+        const scenarioAccounts = scenario.data.accounts || [];
+
+        const currentTotal = currentAccounts.reduce((sum, a) => sum + a.balance, 0);
+        const scenarioTotal = scenarioAccounts.reduce((sum, a) => sum + a.balance, 0);
+
+        report += `Current Total: $${currentTotal.toLocaleString()}\n`;
+        report += `Scenario Total: $${scenarioTotal.toLocaleString()}\n`;
+        report += `Difference: $${(scenarioTotal - currentTotal).toLocaleString()}\n\n`;
+
+        // List account changes
+        scenarioAccounts.forEach(sAcc => {
+            const cAcc = currentAccounts.find(a => a.id === sAcc.id || a.name === sAcc.name);
+            if (!cAcc) {
+                report += `  + NEW: ${sAcc.name} (${sAcc.type}): $${sAcc.balance.toLocaleString()}\n`;
+            } else if (cAcc.balance !== sAcc.balance || cAcc.type !== sAcc.type) {
+                report += `  ≠ CHANGED: ${sAcc.name}\n`;
+                if (cAcc.type !== sAcc.type) report += `      Type: ${cAcc.type} → ${sAcc.type}\n`;
+                if (cAcc.balance !== sAcc.balance) report += `      Balance: $${cAcc.balance.toLocaleString()} → $${sAcc.balance.toLocaleString()}\n`;
+            }
+        });
+        currentAccounts.forEach(cAcc => {
+            if (!scenarioAccounts.find(a => a.id === cAcc.id || a.name === cAcc.name)) {
+                report += `  - REMOVED: ${cAcc.name} ($${cAcc.balance.toLocaleString()})\n`;
+            }
+        });
+
+        // Compare income
+        report += `\n───────────────────────────────────────────────────────\n`;
+        report += `INCOME\n`;
+        report += `───────────────────────────────────────────────────────\n`;
+        const currentIncomes = this.model.incomes;
+        const scenarioIncomes = scenario.data.incomes || [];
+
+        const currentIncomeTotal = currentIncomes.reduce((sum, i) => sum + i.amount * (i.frequency === 'monthly' ? 12 : 1), 0);
+        const scenarioIncomeTotal = scenarioIncomes.reduce((sum, i) => sum + i.amount * (i.frequency === 'monthly' ? 12 : 1), 0);
+
+        report += `Current Annual: $${currentIncomeTotal.toLocaleString()}\n`;
+        report += `Scenario Annual: $${scenarioIncomeTotal.toLocaleString()}\n`;
+        report += `Difference: $${(scenarioIncomeTotal - currentIncomeTotal).toLocaleString()}\n\n`;
+
+        scenarioIncomes.forEach(sInc => {
+            const cInc = currentIncomes.find(i => i.id === sInc.id || i.name === sInc.name);
+            if (!cInc) {
+                report += `  + NEW: ${sInc.name} ($${(sInc.amount * (sInc.frequency === 'monthly' ? 12 : 1)).toLocaleString()}/yr)\n`;
+            } else if (cInc.amount !== sInc.amount || cInc.endYear !== sInc.endYear || cInc.growth !== sInc.growth) {
+                report += `  ≠ CHANGED: ${sInc.name}\n`;
+                if (cInc.amount !== sInc.amount) report += `      Amount: $${cInc.amount.toLocaleString()} → $${sInc.amount.toLocaleString()} (${cInc.frequency})\n`;
+                if (cInc.endYear !== sInc.endYear) report += `      End Year: ${cInc.endYear || 'none'} → ${sInc.endYear || 'none'}\n`;
+                if (cInc.growth !== sInc.growth) report += `      Growth: ${cInc.growth}% → ${sInc.growth}%\n`;
+            }
+        });
+
+        // Compare expenses
+        report += `\n───────────────────────────────────────────────────────\n`;
+        report += `EXPENSES\n`;
+        report += `───────────────────────────────────────────────────────\n`;
+        const currentExpenses = this.model.expenses;
+        const scenarioExpenses = scenario.data.expenses || [];
+
+        const currentExpenseTotal = currentExpenses.reduce((sum, e) => sum + e.amount * (e.frequency === 'monthly' ? 12 : 1), 0);
+        const scenarioExpenseTotal = scenarioExpenses.reduce((sum, e) => sum + e.amount * (e.frequency === 'monthly' ? 12 : 1), 0);
+
+        report += `Current Annual: $${currentExpenseTotal.toLocaleString()}\n`;
+        report += `Scenario Annual: $${scenarioExpenseTotal.toLocaleString()}\n`;
+        report += `Difference: $${(scenarioExpenseTotal - currentExpenseTotal).toLocaleString()}\n\n`;
+
+        scenarioExpenses.forEach(sExp => {
+            const cExp = currentExpenses.find(e => e.id === sExp.id || e.name === sExp.name);
+            if (!cExp) {
+                report += `  + NEW: ${sExp.name} ($${(sExp.amount * (sExp.frequency === 'monthly' ? 12 : 1)).toLocaleString()}/yr)\n`;
+            } else if (cExp.amount !== sExp.amount || cExp.growth !== sExp.growth) {
+                report += `  ≠ CHANGED: ${sExp.name}\n`;
+                if (cExp.amount !== sExp.amount) report += `      Amount: $${cExp.amount.toLocaleString()} → $${sExp.amount.toLocaleString()} (${cExp.frequency})\n`;
+                if (cExp.growth !== sExp.growth) report += `      Growth: ${cExp.growth}% → ${sExp.growth}%\n`;
+            }
+        });
+
+        // Compare settings
+        report += `\n───────────────────────────────────────────────────────\n`;
+        report += `SETTINGS\n`;
+        report += `───────────────────────────────────────────────────────\n`;
+        const cSet = this.model.settings;
+        const sSet = scenario.data.settings || {};
+
+        if (cSet.inflation !== sSet.inflation) {
+            report += `  Inflation: ${cSet.inflation}% → ${sSet.inflation}%\n`;
+        }
+        if (cSet.household?.personA?.retirementYear !== sSet.household?.personA?.retirementYear) {
+            report += `  ${cSet.household.personA.name} Retirement: ${cSet.household.personA.retirementYear} → ${sSet.household.personA.retirementYear}\n`;
+        }
+        if (cSet.household?.personA?.socialSecurity?.enabled !== sSet.household?.personA?.socialSecurity?.enabled ||
+            cSet.household?.personA?.socialSecurity?.startAge !== sSet.household?.personA?.socialSecurity?.startAge) {
+            const cSS = cSet.household.personA.socialSecurity || {};
+            const sSS = sSet.household?.personA?.socialSecurity || {};
+            report += `  ${cSet.household.personA.name} Social Security: `;
+            if (!cSS.enabled && sSS.enabled) report += `Enabled, starts age ${sSS.startAge}\n`;
+            else if (cSS.enabled && !sSS.enabled) report += `Disabled\n`;
+            else if (cSS.startAge !== sSS.startAge) report += `Start age ${cSS.startAge} → ${sSS.startAge}\n`;
+        }
+        if (cSet.household?.personB) {
+            if (cSet.household.personB.retirementYear !== sSet.household?.personB?.retirementYear) {
+                report += `  ${cSet.household.personB.name} Retirement: ${cSet.household.personB.retirementYear} → ${sSet.household?.personB?.retirementYear}\n`;
+            }
+            if (cSet.household.personB.socialSecurity?.enabled !== sSet.household?.personB?.socialSecurity?.enabled ||
+                cSet.household.personB.socialSecurity?.startAge !== sSet.household?.personB?.socialSecurity?.startAge) {
+                const cSS = cSet.household.personB.socialSecurity || {};
+                const sSS = sSet.household?.personB?.socialSecurity || {};
+                report += `  ${cSet.household.personB.name} Social Security: `;
+                if (!cSS.enabled && sSS.enabled) report += `Enabled, starts age ${sSS.startAge}\n`;
+                else if (cSS.enabled && !sSS.enabled) report += `Disabled\n`;
+                else if (cSS.startAge !== sSS.startAge) report += `Start age ${cSS.startAge} → ${sSS.startAge}\n`;
+            }
+        }
+
+        // Compare withdrawal strategy
+        report += `\n───────────────────────────────────────────────────────\n`;
+        report += `WITHDRAWAL STRATEGY\n`;
+        report += `───────────────────────────────────────────────────────\n`;
+        const cWithdraw = this.model.withdrawalStrategy;
+        const sWithdraw = scenario.data.withdrawalStrategy || {};
+
+        if (cWithdraw.type !== sWithdraw.type) {
+            report += `  Type: ${cWithdraw.type} → ${sWithdraw.type}\n`;
+        }
+        if (cWithdraw.withdrawalPercentage !== sWithdraw.withdrawalPercentage) {
+            report += `  Percentage: ${cWithdraw.withdrawalPercentage}% → ${sWithdraw.withdrawalPercentage}%\n`;
+        }
+        if (cWithdraw.withdrawalStartYear !== sWithdraw.withdrawalStartYear) {
+            report += `  Start Year: ${cWithdraw.withdrawalStartYear} → ${sWithdraw.withdrawalStartYear}\n`;
+        }
+
+        // Compare investment glide path
+        report += `\n───────────────────────────────────────────────────────\n`;
+        report += `INVESTMENT GLIDE PATH\n`;
+        report += `───────────────────────────────────────────────────────\n`;
+        const cGlide = this.model.investmentGlidePath || [];
+        const sGlide = scenario.data.investmentGlidePath || [];
+
+        cGlide.forEach((cPeriod, idx) => {
+            const sPeriod = sGlide[idx];
+            if (sPeriod && (cPeriod.expectedReturn !== sPeriod.expectedReturn || cPeriod.volatility !== sPeriod.volatility)) {
+                report += `  Period ${idx + 1} (${cPeriod.startYear}+):\n`;
+                if (cPeriod.expectedReturn !== sPeriod.expectedReturn) {
+                    report += `    Return: ${cPeriod.expectedReturn}% → ${sPeriod.expectedReturn}%\n`;
+                }
+                if (cPeriod.volatility !== sPeriod.volatility) {
+                    report += `    Volatility: ${cPeriod.volatility}% → ${sPeriod.volatility}%\n`;
+                }
+            }
+        });
+
+        report += `\n═══════════════════════════════════════════════════════\n`;
+        report += `To load this scenario, click the "Load" button.\n`;
+        report += `WARNING: Loading will replace ALL current data!\n`;
+        report += `═══════════════════════════════════════════════════════\n`;
+
+        // Display in a modal-style alert with monospace font
+        console.log(report);
+        alert(report);
+    }
+
     loadScenario(scenarioId) {
         const scenario = this.model.scenarios.find(s => s.id === scenarioId);
         if (!scenario) return;
@@ -7475,7 +7654,7 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' �
         this.saveData();
         this.updateDashboard();
         this.switchTab('dashboard');
-        alert(`✓ Loaded scenario "${scenario.name}"`);
+        alert(`✓ Loaded scenario "${scenario.name}"\n\nYou can now view Monte Carlo, Sankey, and all other tabs with this scenario's data.`);
     }
 
     deleteScenario(scenarioId) {
@@ -7525,6 +7704,7 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' �
                             <p>Saved on ${date}</p>
                         </div>
                         <div class="list-item-actions">
+                            <button class="btn btn-primary" onclick="ui.compareScenario(${scenario.id})">Compare to Current</button>
                             <button class="btn btn-secondary" onclick="ui.loadScenario(${scenario.id})">Load</button>
                             <button class="btn btn-danger" onclick="ui.deleteScenario(${scenario.id})">Delete</button>
                         </div>
