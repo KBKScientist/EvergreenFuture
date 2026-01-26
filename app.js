@@ -176,6 +176,7 @@ class FinancialModel {
             purchaseYear: parseInt(property.purchaseYear, 10),
             purchasePrice: parseFloat(property.purchasePrice),
             downPayment: parseFloat(property.downPayment),
+            closingCosts: parseFloat(property.closingCosts) || 0,
             loanAmount: loanAmount,
             interestRate: parseFloat(property.interestRate),
             loanTermYears: parseInt(property.loanTermYears, 10),
@@ -188,7 +189,7 @@ class FinancialModel {
             extraPaymentMonthly: parseFloat(property.extraPaymentMonthly) || 0,
             lumpSumPayoffs: property.lumpSumPayoffs || [], // [{year, amount}]
             sellYear: property.sellYear ? parseInt(property.sellYear, 10) : null,
-            sellingCosts: parseFloat(property.sellingCosts) || 6.0 // % of sale price
+            sellingCosts: parseFloat(property.sellingCosts) || 8.0 // % of sale price
         });
     }
 
@@ -669,6 +670,31 @@ class ProjectionEngine {
             // Add housing and debt costs to annual expenses
             annualExpenses += housingCosts + debtData.totalPayment;
 
+            // Handle home purchase closing costs and home sales
+            let homePurchaseCosts = 0;
+            let homeSaleProceeds = 0;
+            this.model.housing.ownedProperties.forEach(property => {
+                // Closing costs in purchase year (down payment + closing costs)
+                if (year === property.purchaseYear) {
+                    homePurchaseCosts += (property.downPayment || 0) + (property.closingCosts || 0);
+                }
+
+                // Home sale proceeds
+                if (property.sellYear && year === property.sellYear) {
+                    const saleHomeValue = this.calculateHomeValueForYear(property, year);
+                    const saleMortgageBalance = this.calculateMortgageBalanceForYear(property, year).balance;
+                    const sellingCostsAmount = saleHomeValue * ((property.sellingCosts || 8) / 100);
+                    const netProceeds = saleHomeValue - saleMortgageBalance - sellingCostsAmount;
+                    homeSaleProceeds += netProceeds;
+
+                    console.log(`Year ${year}: Selling ${property.name}`);
+                    console.log(`  Home Value: $${saleHomeValue.toLocaleString()}`);
+                    console.log(`  Mortgage Balance: $${saleMortgageBalance.toLocaleString()}`);
+                    console.log(`  Selling Costs (${property.sellingCosts}%): $${sellingCostsAmount.toLocaleString()}`);
+                    console.log(`  Net Proceeds: $${netProceeds.toLocaleString()}`);
+                }
+            });
+
             // Check for milestone costs and windfalls
             let milestoneCosts = 0;
             let milestoneWindfalls = 0;
@@ -718,9 +744,9 @@ class ProjectionEngine {
             let annualTaxes = this.calculateTaxes(annualIncome + milestoneTaxableIncome + debtTaxableIncome, filingStatus);
 
             // Calculate net cash flow (separating regular contributions from windfalls)
-            // Income - Taxes - Expenses - Milestone Costs = Regular Savings
-            const regularSavings = annualIncome - annualTaxes - annualExpenses - milestoneCosts;
-            const netCashFlow = regularSavings + milestoneWindfalls; // Total including windfalls
+            // Income - Taxes - Expenses - Milestone Costs - Home Purchase Costs = Regular Savings
+            const regularSavings = annualIncome - annualTaxes - annualExpenses - milestoneCosts - homePurchaseCosts;
+            const netCashFlow = regularSavings + milestoneWindfalls + homeSaleProceeds; // Total including windfalls and home sales
 
             // Determine contributions or withdrawals needed
             let contributions = 0; // Regular contributions from income-expenses
@@ -862,12 +888,17 @@ class ProjectionEngine {
                 returnRate = applicableSegment.expectedReturn / 100;
             }
 
-            // Apply investment returns to starting balance (before contributions/withdrawals)
-            // This assumes returns accrue throughout the year on the average balance
-            // Standard approach: apply returns first, then adjust for contributions/withdrawals
+            // Apply investment returns to AVERAGE balance (mid-year approximation)
+            // avg_balance = start_balance + 0.5*(contributions + windfalls) - 0.5*(withdrawals)
+            // This is more accurate than applying to start balance, especially in years with large withdrawals
+            const avgBalance = startBalance + 0.5 * (contributions + windfallContributions) - 0.5 * withdrawals;
+            const totalReturnsForYear = avgBalance * returnRate;
+
+            // Distribute returns proportionally across accounts
             let totalInvestmentReturns = 0;
             accountBalances.forEach(acc => {
-                const accountReturns = acc.balance * returnRate;
+                const proportionOfTotal = startBalance > 0 ? acc.balance / startBalance : 1 / accountBalances.length;
+                const accountReturns = totalReturnsForYear * proportionOfTotal;
                 acc.balance += accountReturns;
                 totalInvestmentReturns += accountReturns;
             });
@@ -995,6 +1026,47 @@ class ProjectionEngine {
                 }
             }
 
+            // ENFORCE RMDs: Check if we need to take Required Minimum Distributions
+            // RMDs are mandatory regardless of withdrawal strategy type
+            const personAAge = year - this.model.settings.household.personA.birthYear;
+            const rmdStartAge = this.model.withdrawalStrategy.rmdStartAge || 73;
+
+            if (personAAge >= rmdStartAge) {
+                // Calculate RMD from traditional accounts only
+                const traditionalBalance = this.getTotalByType(accountBalances, 'traditional');
+                if (traditionalBalance > 0) {
+                    const rmdDivisor = this.getRMDDivisor(personAAge);
+                    const requiredRMD = traditionalBalance / rmdDivisor;
+
+                    // If we haven't withdrawn enough from traditional accounts, force additional withdrawal
+                    if (traditionalWithdrawals < requiredRMD) {
+                        const additionalRMD = requiredRMD - traditionalWithdrawals;
+
+                        // Withdraw the additional RMD from traditional accounts
+                        const traditionalAccounts = accountBalances.filter(acc => acc.type === 'traditional');
+                        const totalTraditionalBalance = traditionalAccounts.reduce((sum, acc) => sum + acc.balance, 0);
+
+                        if (totalTraditionalBalance > 0) {
+                            let rmdRemaining = additionalRMD;
+                            traditionalAccounts.forEach(acc => {
+                                const proportion = acc.balance / totalTraditionalBalance;
+                                const amountFromAccount = Math.min(additionalRMD * proportion, acc.balance);
+                                acc.balance -= amountFromAccount;
+                                rmdRemaining -= amountFromAccount;
+                            });
+
+                            // Update tracking
+                            traditionalWithdrawals += additionalRMD;
+                            withdrawals += additionalRMD;
+                            withdrawalsByType.traditional = (withdrawalsByType.traditional || 0) + additionalRMD;
+
+                            // Log RMD enforcement
+                            console.log(`Year ${year}: RMD enforced - Age ${personAAge}, required $${requiredRMD.toLocaleString()}, additional $${additionalRMD.toLocaleString()}`);
+                        }
+                    }
+                }
+            }
+
             const endBalance = this.getTotalBalance(accountBalances);
 
             // Debug large windfalls - log end balance after windfall year
@@ -1012,6 +1084,73 @@ class ProjectionEngine {
             // Calculate additional tax burden from withdrawals
             const withdrawalTaxes = finalTaxes - annualTaxes;
 
+            // DETAILED TAX DEBUGGING OUTPUT for years 2033-2035 (configurable)
+            if (year >= 2033 && year <= 2035) {
+                console.log(`\n========== TAX CALCULATION DEBUG: YEAR ${year} ==========`);
+
+                // 1. Non-portfolio income breakdown
+                console.log(`\n[1] NON-PORTFOLIO INCOME:`);
+                console.log(`  Base Income (salary/pension): $${annualIncome.toLocaleString()}`);
+                console.log(`  Milestone Taxable Income: $${milestoneTaxableIncome.toLocaleString()}`);
+                console.log(`  Debt Taxable Income (forgiveness): $${debtTaxableIncome.toLocaleString()}`);
+
+                // 2. Expenses and cash needs
+                console.log(`\n[2] EXPENSES & CASH NEEDS:`);
+                console.log(`  Annual Expenses: $${annualExpenses.toLocaleString()}`);
+                console.log(`  Milestone Costs: $${milestoneCosts.toLocaleString()}`);
+                console.log(`  Initial Tax Estimate (before withdrawals): $${annualTaxes.toLocaleString()}`);
+                console.log(`  Cash Needed Before Tax Gross-Up: $${(annualExpenses + milestoneCosts + annualTaxes - annualIncome).toLocaleString()}`);
+
+                // 3. Tax gross-up loop details
+                console.log(`\n[3] TAX GROSS-UP LOOP:`);
+                if (withdrawals > 0 && year >= this.model.withdrawalStrategy.withdrawalStartYear) {
+                    const totalBalance = this.getTotalBalance(accountBalances);
+                    const traditionalBalance = this.getTotalByType(accountBalances, 'traditional');
+                    const traditionalPercentage = totalBalance > 0 ? traditionalBalance / totalBalance : 0;
+                    console.log(`  Portfolio: $${totalBalance.toLocaleString()} (${(traditionalPercentage * 100).toFixed(1)}% traditional)`);
+                    console.log(`  Converged after iteration(s) - see loop output above`);
+                } else {
+                    console.log(`  (No deficit or before withdrawal start year - no tax gross-up needed)`);
+                }
+
+                // 4. Actual withdrawals by account type
+                console.log(`\n[4] WITHDRAWALS BY ACCOUNT TYPE:`);
+                console.log(`  Total Withdrawn: $${withdrawals.toLocaleString()}`);
+                if (withdrawalsByType && Object.keys(withdrawalsByType).length > 0) {
+                    Object.entries(withdrawalsByType).forEach(([type, amount]) => {
+                        console.log(`    ${type}: $${amount.toLocaleString()}`);
+                    });
+                } else {
+                    console.log(`    (No withdrawals or breakdown not available)`);
+                }
+                console.log(`  Traditional Withdrawals (taxable): $${traditionalWithdrawals.toLocaleString()}`);
+
+                // 5. Standard deduction
+                const standardDeduction = this.getStandardDeduction(filingStatus);
+                console.log(`\n[5] STANDARD DEDUCTION:`);
+                console.log(`  Filing Status: ${filingStatus}`);
+                console.log(`  Standard Deduction: $${standardDeduction.toLocaleString()}`);
+
+                // 6. Taxable income calculation
+                console.log(`\n[6] TAXABLE INCOME CALCULATION:`);
+                console.log(`  Gross Income: $${annualIncome.toLocaleString()}`);
+                console.log(`  + Traditional Withdrawals: $${traditionalWithdrawals.toLocaleString()}`);
+                console.log(`  + Milestone Tax Bombs: $${milestoneTaxableIncome.toLocaleString()}`);
+                console.log(`  + Debt Tax Bombs: $${debtTaxableIncome.toLocaleString()}`);
+                console.log(`  = Total Taxable Income: $${totalTaxableIncome.toLocaleString()}`);
+                console.log(`  - Standard Deduction: $${standardDeduction.toLocaleString()}`);
+                const taxableAfterDeduction = Math.max(0, totalTaxableIncome - standardDeduction);
+                console.log(`  = Taxable After Deduction: $${taxableAfterDeduction.toLocaleString()}`);
+
+                // 7. Final tax calculation
+                console.log(`\n[7] FINAL TAX CALCULATION:`);
+                console.log(`  Federal Taxes: $${finalTaxes.toLocaleString()}`);
+                console.log(`  Effective Rate: ${totalTaxableIncome > 0 ? (finalTaxes / totalTaxableIncome * 100).toFixed(2) : 0}%`);
+                console.log(`  Marginal Bracket: ${this.getMarginalTaxBracket(totalTaxableIncome, filingStatus)}%`);
+
+                console.log(`\n========== END TAX DEBUG ==========\n`);
+            }
+
             // Validation: end_balance should equal start_balance + contributions + windfalls - withdrawals + returns
             const calculatedEnd = startBalance + contributions + windfallContributions - withdrawals + totalInvestmentReturns;
             const balanceError = Math.abs(endBalance - calculatedEnd);
@@ -1020,14 +1159,15 @@ class ProjectionEngine {
             }
 
             // Comprehensive year summary logging for large balance changes
-            if (Math.abs(endBalance - startBalance) > 500000 || year === 2030 || year === 2031 || year === 2035 || year === 2036) {
-                console.log(`\n=== YEAR ${year} SUMMARY ===`);
-                console.log(`Start: $${startBalance.toLocaleString()}, End: $${endBalance.toLocaleString()}, Change: $${(endBalance - startBalance).toLocaleString()}`);
-                console.log(`Income: $${annualIncome.toLocaleString()}, Expenses: $${annualExpenses.toLocaleString()}, Taxes: $${finalTaxes.toLocaleString()}`);
-                console.log(`Contributions: $${contributions.toLocaleString()}, Windfalls: $${windfallContributions.toLocaleString()}`);
-                console.log(`Withdrawals: $${withdrawals.toLocaleString()} (traditional: $${traditionalWithdrawals.toLocaleString()})`);
-                console.log(`Returns: $${totalInvestmentReturns.toLocaleString()}`);
-            }
+            // Commented out to improve Monte Carlo performance
+            // if (Math.abs(endBalance - startBalance) > 500000 || year === 2030 || year === 2031 || year === 2035 || year === 2036) {
+            //     console.log(`\n=== YEAR ${year} SUMMARY ===`);
+            //     console.log(`Start: $${startBalance.toLocaleString()}, End: $${endBalance.toLocaleString()}, Change: $${(endBalance - startBalance).toLocaleString()}`);
+            //     console.log(`Income: $${annualIncome.toLocaleString()}, Expenses: $${annualExpenses.toLocaleString()}, Taxes: $${finalTaxes.toLocaleString()}`);
+            //     console.log(`Contributions: $${contributions.toLocaleString()}, Windfalls: $${windfallContributions.toLocaleString()}`);
+            //     console.log(`Withdrawals: $${withdrawals.toLocaleString()} (traditional: $${traditionalWithdrawals.toLocaleString()})`);
+            //     console.log(`Returns: $${totalInvestmentReturns.toLocaleString()}`);
+            // }
 
             // Calculate net worth including home equity and debts
             const homeEquity = homeValue - mortgageBalance;
@@ -1272,6 +1412,57 @@ class ProjectionEngine {
         }
 
         return tax;
+    }
+
+    getStandardDeduction(filingStatus) {
+        // 2024 Federal Standard Deductions
+        const standardDeduction = {
+            single: 14600,
+            married: 29200
+        };
+        return standardDeduction[filingStatus] || standardDeduction.single;
+    }
+
+    getMarginalTaxBracket(income, filingStatus) {
+        // Returns the marginal tax rate (highest bracket that applies)
+        const standardDeduction = this.getStandardDeduction(filingStatus);
+        const taxableIncome = Math.max(0, income - standardDeduction);
+
+        if (taxableIncome <= 0) {
+            return 0;
+        }
+
+        const brackets = {
+            single: [
+                { limit: 11600, rate: 10 },
+                { limit: 47150, rate: 12 },
+                { limit: 100525, rate: 22 },
+                { limit: 191950, rate: 24 },
+                { limit: 243725, rate: 32 },
+                { limit: 609350, rate: 35 },
+                { limit: Infinity, rate: 37 }
+            ],
+            married: [
+                { limit: 23200, rate: 10 },
+                { limit: 94300, rate: 12 },
+                { limit: 201050, rate: 22 },
+                { limit: 383900, rate: 24 },
+                { limit: 487450, rate: 32 },
+                { limit: 731200, rate: 35 },
+                { limit: Infinity, rate: 37 }
+            ]
+        };
+
+        const applicableBrackets = brackets[filingStatus] || brackets.single;
+
+        // Find the highest bracket that the income reaches
+        for (const bracket of applicableBrackets) {
+            if (taxableIncome <= bracket.limit) {
+                return bracket.rate;
+            }
+        }
+
+        return 37; // Top bracket
     }
 
     calculateCreditCardPaymentForYear(card, year) {
@@ -4383,11 +4574,13 @@ class UIController {
     }
 
     addProperty() {
+        const sellYearValue = document.getElementById('sellYear').value;
         const property = {
             name: document.getElementById('propertyName').value,
             purchaseYear: parseInt(document.getElementById('purchaseYear').value),
             purchasePrice: parseFloat(document.getElementById('purchasePrice').value),
             downPayment: parseFloat(document.getElementById('downPayment').value),
+            closingCosts: parseFloat(document.getElementById('closingCosts').value) || 0,
             interestRate: parseFloat(document.getElementById('interestRate').value),
             loanTermYears: parseInt(document.getElementById('loanTermYears').value),
             extraPaymentMonthly: parseFloat(document.getElementById('extraPaymentMonthly').value) || 0,
@@ -4395,7 +4588,9 @@ class UIController {
             insuranceAnnual: parseFloat(document.getElementById('insuranceAnnual').value),
             hoaMonthly: parseFloat(document.getElementById('hoaMonthly').value) || 0,
             maintenanceRate: parseFloat(document.getElementById('maintenanceRate').value),
-            appreciationRate: parseFloat(document.getElementById('appreciationRate').value)
+            appreciationRate: parseFloat(document.getElementById('appreciationRate').value),
+            sellYear: sellYearValue ? parseInt(sellYearValue) : null,
+            sellingCosts: parseFloat(document.getElementById('sellingCosts').value) || 8
         };
 
         this.model.addOwnedProperty(property);
@@ -4409,10 +4604,12 @@ class UIController {
         const property = this.model.housing.ownedProperties.find(p => p.id === id);
         if (!property) return;
 
+        const sellYearValue = document.getElementById('sellYear').value;
         property.name = document.getElementById('propertyName').value;
         property.purchaseYear = parseInt(document.getElementById('purchaseYear').value);
         property.purchasePrice = parseFloat(document.getElementById('purchasePrice').value);
         property.downPayment = parseFloat(document.getElementById('downPayment').value);
+        property.closingCosts = parseFloat(document.getElementById('closingCosts').value) || 0;
         property.interestRate = parseFloat(document.getElementById('interestRate').value);
         property.loanTermYears = parseInt(document.getElementById('loanTermYears').value);
         property.extraPaymentMonthly = parseFloat(document.getElementById('extraPaymentMonthly').value) || 0;
@@ -4421,6 +4618,8 @@ class UIController {
         property.hoaMonthly = parseFloat(document.getElementById('hoaMonthly').value) || 0;
         property.maintenanceRate = parseFloat(document.getElementById('maintenanceRate').value);
         property.appreciationRate = parseFloat(document.getElementById('appreciationRate').value);
+        property.sellYear = sellYearValue ? parseInt(sellYearValue) : null;
+        property.sellingCosts = parseFloat(document.getElementById('sellingCosts').value) || 8;
 
         // Recalculate mortgage details
         const loanAmount = property.purchasePrice - property.downPayment;
@@ -4734,38 +4933,46 @@ class UIController {
             this.charts.simulation.destroy();
         }
 
+        // Calculate y-axis range based on liquid net worth (excluding home)
+        const allLiquidValues = results.flatMap(r => [r.p10ExcludingHome, r.medianExcludingHome, r.p75ExcludingHome]);
+        const minLiquid = Math.min(...allLiquidValues);
+        const maxLiquid = Math.max(...allLiquidValues);
+        const liquidRange = maxLiquid - minLiquid;
+        const yMin = Math.floor((minLiquid - liquidRange * 0.1) / 100000) * 100000; // Round down to nearest 100k
+        const yMax = Math.ceil((maxLiquid + liquidRange * 0.1) / 100000) * 100000; // Round up to nearest 100k
+
         this.charts.simulation = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: results.map(r => r.year),
                 datasets: [
                     {
-                        label: '75th Percentile',
-                        data: results.map(r => r.p75),
+                        label: '75th Percentile (Liquid)',
+                        data: results.map(r => r.p75ExcludingHome),
                         borderColor: '#10b981',
                         backgroundColor: 'transparent',
-                        borderWidth: 2
+                        borderWidth: 3
                     },
                     {
-                        label: 'Median',
-                        data: results.map(r => r.median),
+                        label: 'Median (Liquid)',
+                        data: results.map(r => r.medianExcludingHome),
                         borderColor: '#2563eb',
                         backgroundColor: 'transparent',
                         borderWidth: 3
                     },
                     {
-                        label: '10th Percentile',
-                        data: results.map(r => r.p10),
+                        label: '10th Percentile (Liquid)',
+                        data: results.map(r => r.p10ExcludingHome),
                         borderColor: '#ef4444',
                         backgroundColor: 'transparent',
-                        borderWidth: 2
+                        borderWidth: 3
                     },
                     {
-                        label: 'Median (Excluding Home)',
-                        data: results.map(r => r.medianExcludingHome),
-                        borderColor: '#8b5cf6',
+                        label: 'Total Net Worth (Median, may be off-chart)',
+                        data: results.map(r => r.median),
+                        borderColor: '#9ca3af',
                         backgroundColor: 'transparent',
-                        borderWidth: 2,
+                        borderWidth: 1,
                         borderDash: [5, 5]
                     }
                 ]
@@ -4775,10 +4982,17 @@ class UIController {
                 plugins: {
                     legend: {
                         display: true
+                    },
+                    title: {
+                        display: true,
+                        text: 'Liquid Net Worth (Investment Accounts Only - Excluding Primary Residence)',
+                        font: { size: 14, weight: 'bold' }
                     }
                 },
                 scales: {
                     y: {
+                        min: yMin,
+                        max: yMax,
                         ticks: {
                             callback: (value) => '$' + value.toLocaleString()
                         }
@@ -4906,24 +5120,41 @@ class UIController {
             this.charts.stressTest.destroy();
         }
 
+        // Calculate y-axis range based on liquid net worth (excluding home)
+        const normalLiquid = normalProjection.map(p => p.netWorth - (p.homeEquity || 0));
+        const stressLiquid = stressProjection.map(p => p.netWorth - (p.homeEquity || 0));
+        const allLiquidValues = [...normalLiquid, ...stressLiquid];
+        const minLiquid = Math.min(...allLiquidValues);
+        const maxLiquid = Math.max(...allLiquidValues);
+        const liquidRange = maxLiquid - minLiquid;
+        const yMin = Math.floor((minLiquid - liquidRange * 0.1) / 100000) * 100000;
+        const yMax = Math.ceil((maxLiquid + liquidRange * 0.1) / 100000) * 100000;
+
         this.charts.stressTest = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: stressProjection.map(p => p.year),
                 datasets: [
                     {
-                        label: 'Normal Scenario',
-                        data: normalProjection.map(p => p.netWorth),
+                        label: 'Normal Scenario (Liquid)',
+                        data: normalLiquid,
                         borderColor: '#10b981',
                         backgroundColor: 'transparent',
-                        borderWidth: 2
+                        borderWidth: 3
                     },
                     {
-                        label: scenario.name,
-                        data: stressProjection.map(p => p.netWorth),
+                        label: `${scenario.name} (Liquid)`,
+                        data: stressLiquid,
                         borderColor: '#ef4444',
                         backgroundColor: 'transparent',
-                        borderWidth: 3,
+                        borderWidth: 3
+                    },
+                    {
+                        label: 'Normal Total Net Worth (may be off-chart)',
+                        data: normalProjection.map(p => p.netWorth),
+                        borderColor: '#9ca3af',
+                        backgroundColor: 'transparent',
+                        borderWidth: 1,
                         borderDash: [5, 5]
                     }
                 ]
@@ -4933,7 +5164,8 @@ class UIController {
                 plugins: {
                     title: {
                         display: true,
-                        text: `Stress Test: ${scenario.name}`
+                        text: `Stress Test: ${scenario.name} - Liquid Net Worth (Excluding Home)`,
+                        font: { size: 14, weight: 'bold' }
                     },
                     legend: {
                         display: true
@@ -4941,6 +5173,8 @@ class UIController {
                 },
                 scales: {
                     y: {
+                        min: yMin,
+                        max: yMax,
                         ticks: {
                             callback: (value) => '$' + value.toLocaleString()
                         }
@@ -4949,30 +5183,61 @@ class UIController {
             }
         });
 
-        // Calculate impact
-        const normalFinal = normalProjection[normalProjection.length - 1].netWorth;
-        const stressFinal = stressProjection[stressProjection.length - 1].netWorth;
+        // Calculate impact (using liquid net worth for comparison)
+        const normalFinalProjection = normalProjection[normalProjection.length - 1];
+        const stressFinalProjection = stressProjection[stressProjection.length - 1];
+
+        const normalFinal = normalFinalProjection.netWorth;
+        const stressFinal = stressFinalProjection.netWorth;
+
+        const normalFinalLiquid = normalFinal - (normalFinalProjection.homeEquity || 0);
+        const stressFinalLiquid = stressFinal - (stressFinalProjection.homeEquity || 0);
+
         const impact = ((stressFinal - normalFinal) / normalFinal * 100).toFixed(1);
+        const impactLiquid = ((stressFinalLiquid - normalFinalLiquid) / normalFinalLiquid * 100).toFixed(1);
         const survives = stressProjection.every(p => p.netWorth > 0);
 
         document.getElementById('stressTestStats').innerHTML = `
             <div style="padding: 15px; background: ${survives ? '#f0fdf4' : '#fef2f2'}; border-radius: 8px;">
                 <h3 style="margin: 0 0 10px 0; font-size: 16px;">${scenario.name}</h3>
                 <p style="color: #64748b; margin-bottom: 10px;">${scenario.description}</p>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
-                    <div>
-                        <div style="font-size: 12px; color: #64748b;">Normal Final</div>
-                        <div style="font-size: 18px; font-weight: 600;">$${normalFinal.toLocaleString()}</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 12px; color: #64748b;">Stress Final</div>
-                        <div style="font-size: 18px; font-weight: 600; color: ${stressFinal < 0 ? '#ef4444' : 'inherit'};">$${stressFinal.toLocaleString()}</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 12px; color: #64748b;">Impact</div>
-                        <div style="font-size: 18px; font-weight: 600; color: ${impact < 0 ? '#ef4444' : '#10b981'};">${impact > 0 ? '+' : ''}${impact}%</div>
+
+                <div style="margin-bottom: 15px;">
+                    <h4 style="font-size: 14px; color: #64748b; margin-bottom: 8px;">Liquid Net Worth (Investment Accounts)</h4>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+                        <div>
+                            <div style="font-size: 12px; color: #64748b;">Normal Final</div>
+                            <div style="font-size: 18px; font-weight: 600;">$${normalFinalLiquid.toLocaleString()}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; color: #64748b;">Stress Final</div>
+                            <div style="font-size: 18px; font-weight: 600; color: ${stressFinalLiquid < 0 ? '#ef4444' : 'inherit'};">$${stressFinalLiquid.toLocaleString()}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; color: #64748b;">Impact</div>
+                            <div style="font-size: 18px; font-weight: 600; color: ${impactLiquid < 0 ? '#ef4444' : '#10b981'};">${impactLiquid > 0 ? '+' : ''}${impactLiquid}%</div>
+                        </div>
                     </div>
                 </div>
+
+                <div style="padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                    <h4 style="font-size: 14px; color: #64748b; margin-bottom: 8px;">Total Net Worth (Including Home)</h4>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+                        <div>
+                            <div style="font-size: 12px; color: #64748b;">Normal Final</div>
+                            <div style="font-size: 16px; font-weight: 500;">$${normalFinal.toLocaleString()}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; color: #64748b;">Stress Final</div>
+                            <div style="font-size: 16px; font-weight: 500; color: ${stressFinal < 0 ? '#ef4444' : 'inherit'};">$${stressFinal.toLocaleString()}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; color: #64748b;">Impact</div>
+                            <div style="font-size: 16px; font-weight: 500; color: ${impact < 0 ? '#ef4444' : '#10b981'};">${impact > 0 ? '+' : ''}${impact}%</div>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
                     <strong style="color: ${survives ? '#10b981' : '#ef4444'};">
                         ${survives ? '‚úÖ Plan survives this scenario!' : '‚ùå Plan fails - you run out of money!'}
@@ -5041,6 +5306,10 @@ class UIController {
                     <label>Down Payment ($)</label>
                     <input type="number" id="downPayment" value="${property?.downPayment || 0}" step="1000">
                 </div>
+                <div class="form-group">
+                    <label>Closing Costs ($) <small style="color: #64748b;">Typical: 2-5% of purchase price</small></label>
+                    <input type="number" id="closingCosts" value="${property?.closingCosts || 0}" step="500">
+                </div>
 
                 <h3>Mortgage</h3>
                 <div class="form-group">
@@ -5078,6 +5347,14 @@ class UIController {
                 <div class="form-group">
                     <label>Appreciation Rate (%/year)</label>
                     <input type="number" id="appreciationRate" value="${property?.appreciationRate || 3.0}" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Planned Sale Year <small style="color: #64748b;">(Optional - leave blank if not selling)</small></label>
+                    <input type="number" id="sellYear" value="${property?.sellYear || ''}" placeholder="e.g., 2040">
+                </div>
+                <div class="form-group">
+                    <label>Selling Costs (% of sale price) <small style="color: #64748b;">Typical: 8-10% (realtor fees + closing)</small></label>
+                    <input type="number" id="sellingCosts" value="${property?.sellingCosts || 8}" step="0.5" min="0" max="20">
                 </div>
 
                 <div class="modal-actions">
@@ -5505,12 +5782,16 @@ class UIController {
 
             console.log(`Line ${i}: "${line.substring(0, 80)}"`);
 
-            // Section headers
-            if (line.startsWith('[') && line.endsWith(']')) {
-                currentSection = line.slice(1, -1);
-                console.log(`Found section: ${currentSection}`);
-                headers = [];
-                continue;
+            // Section headers (check if line starts with [ and contains ])
+            if (line.startsWith('[')) {
+                // Extract section name between [ and ]
+                const closeBracket = line.indexOf(']');
+                if (closeBracket > 0) {
+                    currentSection = line.slice(1, closeBracket);
+                    console.log(`Found section: ${currentSection}`);
+                    headers = [];
+                    continue;
+                }
             }
 
             // Parse CSV line (handle quoted values)
@@ -5562,7 +5843,12 @@ class UIController {
             }
 
             // Parse data based on section
-            if (!currentSection) continue;
+            if (!currentSection) {
+                console.log('  No current section, skipping');
+                continue;
+            }
+
+            console.log(`  Processing data row for section: ${currentSection}`);
 
             const parseRow = () => {
                 const obj = {};
@@ -5584,7 +5870,9 @@ class UIController {
 
             switch (currentSection) {
                 case 'SETTINGS':
+                    console.log('  ‚Üí Processing SETTINGS');
                     const settings = parseRow();
+                    console.log('  ‚Üí Settings parsed:', settings);
                     data.settings.planStartYear = settings.PlanStartYear;
                     data.settings.projectionHorizon = settings.ProjectionHorizon;
                     data.settings.inflation = settings.Inflation;
@@ -5622,7 +5910,9 @@ class UIController {
                     break;
 
                 case 'ACCOUNTS':
+                    console.log('  ‚Üí Processing ACCOUNT');
                     const account = parseRow();
+                    console.log('  ‚Üí Account parsed:', account);
                     data.accounts.push({
                         id: Date.now() + Math.random(),
                         name: account.Name,
@@ -6599,7 +6889,10 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' ‚Ü
                 "note": "Detailed year-by-year projection with balance reconciliation. Each year: end_balance = start_balance + contributions + windfall_contributions - withdrawals + investment_returns. NOTE: contributions = income - TAXES - expenses (after-tax savings), windfall_contributions = one-time windfalls from milestones (inheritance, bonuses, etc.)",
                 "years": projections.map(p => {
                     const personAAge = this.model.settings.planStartYear - this.model.settings.household.personA.birthYear + (p.year - this.model.settings.planStartYear);
-                    const effectiveTaxRate = p.income > 0 ? ((p.taxes || 0) / p.income * 100) : 0;
+                    // Calculate effective tax rate using total taxable income (income + traditional withdrawals + tax bombs)
+                    // NOT just "income" which could be near zero in retirement
+                    const totalTaxableIncome = p.income + (p.traditionalWithdrawals || 0) + (p.milestoneTaxableIncome || 0) + (p.debtTaxableIncome || 0);
+                    const effectiveTaxRate = totalTaxableIncome > 0 ? ((p.taxes || 0) / totalTaxableIncome * 100) : 0;
                     return {
                         year: p.year,
                         person_a_age: personAAge,
@@ -6667,7 +6960,7 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' ‚Ü
                         "start_balance": "Portfolio value at beginning of year",
                         "income": "Gross income before taxes (salary + retirement income + pensions)",
                         "taxes": "Federal income taxes calculated based on filing status (single vs married filing jointly). Uses 2024 tax brackets.",
-                        "effective_tax_rate": "Actual tax rate paid as percentage of income (taxes / income * 100)",
+                        "effective_tax_rate": "Actual tax rate paid as percentage of total taxable income (taxes / (income + traditional_withdrawals + tax_bombs) * 100). More accurate than income-only in retirement.",
                         "expenses": "Annual living expenses",
                         "contributions": "After-tax savings = income - TAXES - expenses (excludes windfalls). This is the TRUE savings rate.",
                         "windfall_contributions": "One-time windfalls (inheritance, bonuses, home sale proceeds). Separated so savings rate remains meaningful.",
@@ -7157,7 +7450,14 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' ‚Ü
             this.charts.scenarioComparison.destroy();
         }
 
-        const datasets = this.model.scenarios.map((scenario, index) => {
+        const colors = [
+            '#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+            '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16'
+        ];
+
+        const datasets = [];
+
+        this.model.scenarios.forEach((scenario, index) => {
             // Create a temporary model with this scenario's data
             const tempModel = new FinancialModel();
             tempModel.accounts = scenario.data.accounts;
@@ -7173,19 +7473,30 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' ‚Ü
             const tempEngine = new ProjectionEngine(tempModel);
             const projections = tempEngine.projectNetWorth(40);
 
-            const colors = [
-                '#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-                '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16'
-            ];
+            const color = colors[index % colors.length];
 
-            return {
-                label: scenario.name,
+            // Total net worth (solid line)
+            datasets.push({
+                label: `${scenario.name} (Total)`,
                 data: projections.map(p => p.netWorth),
-                borderColor: colors[index % colors.length],
-                backgroundColor: colors[index % colors.length] + '20',
+                borderColor: color,
+                backgroundColor: 'transparent',
                 fill: false,
+                borderWidth: 3,
                 tension: 0.4
-            };
+            });
+
+            // Liquid net worth (dotted line, same color)
+            datasets.push({
+                label: `${scenario.name} (Liquid)`,
+                data: projections.map(p => p.netWorth - (p.homeEquity || 0)),
+                borderColor: color,
+                backgroundColor: 'transparent',
+                fill: false,
+                borderWidth: 2,
+                borderDash: [5, 5],
+                tension: 0.4
+            });
         });
 
         const years = [];
@@ -7204,6 +7515,11 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' ‚Ü
                 responsive: true,
                 maintainAspectRatio: true,
                 plugins: {
+                    title: {
+                        display: true,
+                        text: 'Scenario Comparison: Solid = Total Net Worth, Dotted = Liquid (Excluding Home)',
+                        font: { size: 13, weight: 'bold' }
+                    },
                     legend: {
                         display: true,
                         position: 'top'

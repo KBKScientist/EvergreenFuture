@@ -41,10 +41,10 @@
                 <div class="tab-dropdown">
                     <button class="tab-btn" data-tab="milestones">Milestones</button>
                     <button class="tab-btn" data-tab="withdrawal">Withdrawal Strategy</button>
-                    <button class="tab-btn" data-tab="scenarios">Scenarios</button>
                 </div>
             </div>
 
+            <button class="tab-btn" data-tab="scenarios">📈 Scenarios</button>
             <button class="tab-btn" data-tab="taxes">📋 Taxes</button>
             <button class="tab-btn" data-tab="simulation">🎲 Monte Carlo</button>
             <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
@@ -425,6 +425,42 @@
                         <h3>Owned Properties</h3>
                         <button class="btn btn-primary" id="addPropertyBtn">+ Add Property</button>
                         <div id="propertiesList"></div>
+                    </div>
+                </div>
+
+                <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 1.3rem;">🏡 Buy vs Rent Decision Helper</h3>
+                    <p style="margin-bottom: 15px; line-height: 1.6;">Trying to decide between buying and renting? Use the <strong>Scenarios</strong> tab to compare both options side-by-side!</p>
+
+                    <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 1.1rem;">How to Compare:</h4>
+                        <ol style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                            <li><strong>Create "Rent" scenario:</strong> Set housing to rent, save current plan as scenario</li>
+                            <li><strong>Create "Buy" scenario:</strong> Switch to own, add property with all costs (closing costs, taxes, insurance, maintenance), save as new scenario</li>
+                            <li><strong>Go to Scenarios tab:</strong> View side-by-side comparison of liquid net worth over time</li>
+                        </ol>
+                    </div>
+
+                    <div style="background: rgba(255,255,255,0.15); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 1rem;">💡 Key Factors to Include:</h4>
+                        <ul style="margin: 0; padding-left: 20px; line-height: 1.7; font-size: 14px;">
+                            <li><strong>Closing costs:</strong> 2-5% of purchase price (one-time)</li>
+                            <li><strong>Down payment:</strong> Reduces mortgage but ties up cash</li>
+                            <li><strong>Selling costs:</strong> 8-10% when you sell (realtor + closing)</li>
+                            <li><strong>Property taxes:</strong> 0.5-2% of home value annually</li>
+                            <li><strong>Maintenance:</strong> 1-2% of home value annually</li>
+                            <li><strong>Opportunity cost:</strong> Down payment could be invested instead</li>
+                        </ul>
+                    </div>
+
+                    <div style="background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px;">
+                        <strong>📊 What to Look For:</strong>
+                        <ul style="margin: 8px 0 0 0; padding-left: 20px; line-height: 1.7; font-size: 14px;">
+                            <li>Compare <strong>liquid net worth</strong> (dotted lines) - this is your available cash</li>
+                            <li>Buying builds equity but reduces liquidity in early years</li>
+                            <li>Break-even point: where buy scenario catches up to rent</li>
+                            <li>Consider: are you staying long enough to benefit from appreciation?</li>
+                        </ul>
                     </div>
                 </div>
             </div>
