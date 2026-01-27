@@ -8141,19 +8141,41 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         const indicator = document.getElementById('currentScenarioIndicator');
         const nameElement = document.getElementById('currentScenarioName');
 
+        if (!indicator || !nameElement) {
+            console.warn('Scenario indicator elements not found in DOM');
+            return;
+        }
+
+        // Always show the banner
+        indicator.style.display = 'flex';
+
         if (this.currentScenarioId) {
             const scenario = this.model.scenarios.find(s => s.id === this.currentScenarioId);
             if (scenario) {
-                indicator.style.display = 'flex';
-                nameElement.textContent = scenario.name;
+                // Viewing a saved scenario
+                nameElement.innerHTML = `<strong>${this.escapeHtml(scenario.name)}</strong>`;
+                indicator.style.background = 'var(--primary-light)';
+                indicator.style.borderColor = 'var(--primary-color)';
             } else {
                 // Scenario was deleted, clear the ID
                 this.currentScenarioId = null;
-                indicator.style.display = 'none';
+                this.showBasePlanIndicator(indicator, nameElement);
             }
         } else {
-            indicator.style.display = 'none';
+            // Viewing base plan
+            this.showBasePlanIndicator(indicator, nameElement);
         }
+    }
+
+    showBasePlanIndicator(indicator, nameElement) {
+        // Show base plan message
+        if (this.model.scenarios.length === 0) {
+            nameElement.innerHTML = '<strong>Base Plan</strong> <span style="color: var(--text-secondary); font-weight: 400; font-size: 14px;">(Create scenarios on the Scenarios tab to compare alternatives)</span>';
+        } else {
+            nameElement.innerHTML = '<strong>Base Plan</strong> <span style="color: var(--text-secondary); font-weight: 400; font-size: 14px;">(Switch to a saved scenario on the Scenarios tab)</span>';
+        }
+        indicator.style.background = '#f3f4f6';
+        indicator.style.borderColor = '#9ca3af';
     }
 
     deleteScenario(scenarioId) {
