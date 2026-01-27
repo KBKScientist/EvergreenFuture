@@ -6023,126 +6023,239 @@ class UIController {
                     return;
                 }
 
-                // Use the same loading logic as loadData for consistency
-                this.model.accounts = parsed.accounts || [];
-                this.model.incomes = (parsed.incomes || []).map(inc => ({
-                    ...inc,
-                    ownerId: inc.ownerId || 'household',
-                    phasedRetirement: inc.phasedRetirement || null
-                }));
-                this.model.expenses = parsed.expenses || [];
-                this.model.milestones = (parsed.milestones || []).map(m => ({
-                    ...m,
-                    ownerId: m.ownerId || 'household'
-                }));
-
-                // Handle backwards compatibility
-                if (parsed.settings) {
-                    if (parsed.settings.household) {
-                        this.model.settings = parsed.settings;
-
-                        // Add missing socialSecurity to Person A if needed
-                        if (!this.model.settings.household.personA.socialSecurity) {
-                            this.model.settings.household.personA.socialSecurity = {
-                                enabled: false,
-                                annualAmount: 0,
-                                startAge: 67
-                            };
-                        }
-
-                        // Add missing socialSecurity to Person B if needed
-                        if (this.model.settings.household.personB && !this.model.settings.household.personB.socialSecurity) {
-                            this.model.settings.household.personB.socialSecurity = {
-                                enabled: false,
-                                annualAmount: 0,
-                                startAge: 67
-                            };
-                        }
-
-                        // Add missing pension if needed
-                        if (!this.model.settings.pension) {
-                            this.model.settings.pension = {
-                                enabled: false,
-                                owner: 'personA',
-                                name: '',
-                                annualAmount: 0,
-                                startYear: this.model.settings.planStartYear,
-                                growth: 0
-                            };
-                        }
-                    } else {
-                        const currentYear = new Date().getFullYear();
-                        this.model.settings = {
-                            planStartYear: currentYear,
-                            projectionHorizon: 40,
-                            inflation: parsed.settings.inflation || 3.0,
-                            filingStatus: parsed.settings.filingStatus || 'single',
-                            household: {
-                                personA: {
-                                    name: 'Person A',
-                                    birthYear: currentYear - (parsed.settings.currentAge || 30),
-                                    retirementYear: currentYear + ((parsed.settings.retirementAge || 65) - (parsed.settings.currentAge || 30)),
-                                    lifeExpectancy: parsed.settings.lifeExpectancy || 95,
-                                    socialSecurity: {
-                                        enabled: false,
-                                        annualAmount: 0,
-                                        startAge: 67
-                                    }
-                                },
-                                personB: null
-                            },
-                            pension: {
-                                enabled: false,
-                                owner: 'personA',
-                                name: '',
-                                annualAmount: 0,
-                                startYear: currentYear,
-                                growth: 0
-                            }
-                        };
-                    }
-                }
-
-                this.model.investmentGlidePath = parsed.investmentGlidePath || [
-                    { startYear: new Date().getFullYear(), expectedReturn: 7, volatility: 15 }
-                ];
-
-                // Migration: Fix old 'always' withdrawalMode to 'as_needed'
-                let withdrawalModeFromFile = parsed.withdrawalStrategy?.withdrawalMode || 'as_needed';
-                if (withdrawalModeFromFile === 'always') {
-                    console.warn('Migrating loaded file withdrawalMode from "always" to "as_needed"');
-                    withdrawalModeFromFile = 'as_needed';
-                }
-
-                this.model.withdrawalStrategy = {
-                    ...(parsed.withdrawalStrategy || {}),
-                    type: parsed.withdrawalStrategy?.type || 'fixed_percentage',
-                    autoWithdrawalStart: parsed.withdrawalStrategy?.autoWithdrawalStart !== false,
-                    withdrawalMode: withdrawalModeFromFile,
-                    taxOptimizedSequence: parsed.withdrawalStrategy?.taxOptimizedSequence || ['cash', 'taxable', 'traditional', 'roth', 'hsa']
-                };
-
-                // MIGRATION: Fix old withdrawal sequences that don't include 'cash'
-                if (this.model.withdrawalStrategy.taxOptimizedSequence &&
-                    !this.model.withdrawalStrategy.taxOptimizedSequence.includes('cash')) {
-                    console.warn('Migrating imported file withdrawal sequence to include cash accounts');
-                    this.model.withdrawalStrategy.taxOptimizedSequence.unshift('cash');
-                }
-
-                this.model.scenarios = parsed.scenarios || [];
-
-                // Load housing data
-                this.model.housing = parsed.housing || this.model.housing;
-
-                // Load debts data
-                this.model.debts = parsed.debts || this.model.debts;
-
-                this.updateDashboard();
-                this.saveData();
+                // Ask user if they want to import as scenario or replace current data
+                this.showImportOptionsModal(parsed);
             };
             reader.readAsText(file);
         };
         input.click();
+    }
+
+    showImportOptionsModal(parsed) {
+        const modal = document.getElementById('modal');
+
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h2>Import Options</h2>
+                <p>How would you like to import this data?</p>
+
+                <div style="margin: 20px 0;">
+                    <button class="btn btn-primary" id="importAsScenarioBtn" style="width: 100%; margin-bottom: 10px; padding: 15px;">
+                        <strong>Import as New Scenario</strong><br>
+                        <small>Add this as a new scenario to compare with your current plan</small>
+                    </button>
+
+                    <button class="btn btn-secondary" id="replaceCurrentBtn" style="width: 100%; padding: 15px;">
+                        <strong>Replace Current Data</strong><br>
+                        <small>Overwrite your current plan with this data (scenarios will be preserved)</small>
+                    </button>
+                </div>
+
+                <button class="btn btn-secondary" onclick="ui.closeModal()">Cancel</button>
+            </div>
+        `;
+
+        modal.style.display = 'block';
+
+        document.getElementById('importAsScenarioBtn').addEventListener('click', () => {
+            this.closeModal();
+            this.showScenarioNameModal(parsed);
+        });
+
+        document.getElementById('replaceCurrentBtn').addEventListener('click', () => {
+            this.closeModal();
+            this.loadImportedData(parsed);
+        });
+    }
+
+    showScenarioNameModal(parsed) {
+        const modal = document.getElementById('modal');
+        const defaultName = `Imported Scenario ${new Date().toLocaleDateString()}`;
+
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h2>Name Your Scenario</h2>
+
+                <div class="form-group">
+                    <label>Scenario Name</label>
+                    <input type="text" id="scenarioNameInput" value="${defaultName}" placeholder="Enter scenario name">
+                </div>
+
+                <div class="form-group">
+                    <label>Description (optional)</label>
+                    <textarea id="scenarioDescInput" placeholder="Describe what makes this scenario different..." rows="3"></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="ui.closeModal()">Cancel</button>
+                    <button class="btn btn-primary" id="createScenarioBtn">Create Scenario</button>
+                </div>
+            </div>
+        `;
+
+        modal.style.display = 'block';
+
+        // Focus on name input
+        document.getElementById('scenarioNameInput').focus();
+        document.getElementById('scenarioNameInput').select();
+
+        // Handle enter key in name input
+        document.getElementById('scenarioNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('createScenarioBtn').click();
+            }
+        });
+
+        document.getElementById('createScenarioBtn').addEventListener('click', () => {
+            const name = document.getElementById('scenarioNameInput').value.trim();
+            const description = document.getElementById('scenarioDescInput').value.trim();
+
+            if (!name) {
+                alert('Please enter a name for the scenario');
+                return;
+            }
+
+            // Create the scenario
+            const newScenario = {
+                id: Date.now(),
+                name: name,
+                description: description || 'Imported scenario',
+                date: new Date().toISOString(),
+                data: parsed
+            };
+
+            this.model.scenarios.push(newScenario);
+            this.saveData();
+            this.closeModal();
+
+            // Switch to scenarios tab
+            document.querySelector('[data-tab="scenarios"]').click();
+
+            alert(`✓ Scenario "${name}" created successfully!\n\nYou can now compare it with other scenarios.`);
+        });
+    }
+
+    loadImportedData(parsed) {
+        // Use the same loading logic as loadData for consistency
+        this.model.accounts = parsed.accounts || [];
+        this.model.incomes = (parsed.incomes || []).map(inc => ({
+            ...inc,
+            ownerId: inc.ownerId || 'household',
+            phasedRetirement: inc.phasedRetirement || null
+        }));
+        this.model.expenses = parsed.expenses || [];
+        this.model.milestones = (parsed.milestones || []).map(m => ({
+            ...m,
+            ownerId: m.ownerId || 'household'
+        }));
+
+        // Handle backwards compatibility
+        if (parsed.settings) {
+            if (parsed.settings.household) {
+                this.model.settings = parsed.settings;
+
+                // Add missing socialSecurity to Person A if needed
+                if (!this.model.settings.household.personA.socialSecurity) {
+                    this.model.settings.household.personA.socialSecurity = {
+                        enabled: false,
+                        annualAmount: 0,
+                        startAge: 67
+                    };
+                }
+
+                // Add missing socialSecurity to Person B if needed
+                if (this.model.settings.household.personB && !this.model.settings.household.personB.socialSecurity) {
+                    this.model.settings.household.personB.socialSecurity = {
+                        enabled: false,
+                        annualAmount: 0,
+                        startAge: 67
+                    };
+                }
+
+                // Add missing pension if needed
+                if (!this.model.settings.pension) {
+                    this.model.settings.pension = {
+                        enabled: false,
+                        owner: 'personA',
+                        name: '',
+                        annualAmount: 0,
+                        startYear: this.model.settings.planStartYear,
+                        growth: 0
+                    };
+                }
+            } else {
+                const currentYear = new Date().getFullYear();
+                this.model.settings = {
+                    planStartYear: currentYear,
+                    projectionHorizon: 40,
+                    inflation: parsed.settings.inflation || 3.0,
+                    filingStatus: parsed.settings.filingStatus || 'single',
+                    household: {
+                        personA: {
+                            name: 'Person A',
+                            birthYear: currentYear - (parsed.settings.currentAge || 30),
+                            retirementYear: currentYear + ((parsed.settings.retirementAge || 65) - (parsed.settings.currentAge || 30)),
+                            lifeExpectancy: parsed.settings.lifeExpectancy || 95,
+                            socialSecurity: {
+                                enabled: false,
+                                annualAmount: 0,
+                                startAge: 67
+                            }
+                        },
+                        personB: null
+                    },
+                    pension: {
+                        enabled: false,
+                        owner: 'personA',
+                        name: '',
+                        annualAmount: 0,
+                        startYear: currentYear,
+                        growth: 0
+                    }
+                };
+            }
+        }
+
+        this.model.investmentGlidePath = parsed.investmentGlidePath || [
+            { startYear: new Date().getFullYear(), expectedReturn: 7, volatility: 15 }
+        ];
+
+        // Migration: Fix old 'always' withdrawalMode to 'as_needed'
+        let withdrawalModeFromFile = parsed.withdrawalStrategy?.withdrawalMode || 'as_needed';
+        if (withdrawalModeFromFile === 'always') {
+            console.warn('Migrating loaded file withdrawalMode from "always" to "as_needed"');
+            withdrawalModeFromFile = 'as_needed';
+        }
+
+        this.model.withdrawalStrategy = {
+            ...(parsed.withdrawalStrategy || {}),
+            type: parsed.withdrawalStrategy?.type || 'fixed_percentage',
+            autoWithdrawalStart: parsed.withdrawalStrategy?.autoWithdrawalStart !== false,
+            withdrawalMode: withdrawalModeFromFile,
+            taxOptimizedSequence: parsed.withdrawalStrategy?.taxOptimizedSequence || ['cash', 'taxable', 'traditional', 'roth', 'hsa']
+        };
+
+        // MIGRATION: Fix old withdrawal sequences that don't include 'cash'
+        if (this.model.withdrawalStrategy.taxOptimizedSequence &&
+            !this.model.withdrawalStrategy.taxOptimizedSequence.includes('cash')) {
+            console.warn('Migrating imported file withdrawal sequence to include cash accounts');
+            this.model.withdrawalStrategy.taxOptimizedSequence.unshift('cash');
+        }
+
+        // Preserve existing scenarios when replacing data
+        const existingScenarios = this.model.scenarios;
+        this.model.scenarios = existingScenarios;
+
+        // Load housing data
+        this.model.housing = parsed.housing || this.model.housing;
+
+        // Load debts data
+        this.model.debts = parsed.debts || this.model.debts;
+
+        this.updateDashboard();
+        this.saveData();
+
+        alert('✓ Data imported successfully!\n\nYour plan has been updated with the imported data.');
     }
 
     exportData() {
