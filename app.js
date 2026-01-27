@@ -2119,6 +2119,8 @@ class UIController {
         } else if (tabName === 'debts') {
             this.updateCreditCardsList();
             this.updateLoansList();
+        } else if (tabName === 'taxes') {
+            this.updateTaxProjections();
         }
     }
 
