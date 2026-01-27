@@ -2306,7 +2306,8 @@ class UIController {
                         borderColor: '#2563eb',
                         backgroundColor: 'rgba(37, 99, 235, 0.6)',
                         fill: true,
-                        tension: 0.4
+                        tension: 0.4,
+                        stack: 'networth' // Stack these two together
                     },
                     {
                         label: 'Home Equity',
@@ -2314,7 +2315,8 @@ class UIController {
                         borderColor: '#059669',
                         backgroundColor: 'rgba(5, 150, 105, 0.6)',
                         fill: true,
-                        tension: 0.4
+                        tension: 0.4,
+                        stack: 'networth' // Stack with investment accounts
                     },
                     {
                         label: 'Total Net Worth',
@@ -2325,6 +2327,7 @@ class UIController {
                         tension: 0.4,
                         borderWidth: 2,
                         borderDash: [5, 5]
+                        // No stack property - will be drawn independently
                     }
                 ]
             },
