@@ -1851,6 +1851,7 @@ class UIController {
         this.initializeEventListeners();
         this.initializeCharts();
         this.loadData();
+        this.updateScenariosList(); // Update scenarios list to show current scenario
         this.updateDashboard();
     }
 
