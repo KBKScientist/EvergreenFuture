@@ -2404,6 +2404,19 @@ class UIController {
         this.charts.netWorth.data.datasets[1].data = projections.map(p => p.homeEquity || 0);
         // Total net worth line
         this.charts.netWorth.data.datasets[2].data = projections.map(p => p.netWorth);
+
+        // Debug: Check first year to verify calculations match
+        if (projections.length > 0) {
+            const firstYear = projections[0];
+            const calculatedNetWorth = firstYear.endBalance + (firstYear.homeEquity || 0) - (firstYear.debtBalance || 0);
+            if (Math.abs(calculatedNetWorth - firstYear.netWorth) > 1) {
+                console.warn(`Net worth mismatch in year ${firstYear.year}:`,
+                    `endBalance=${firstYear.endBalance}, homeEquity=${firstYear.homeEquity || 0}, ` +
+                    `debtBalance=${firstYear.debtBalance || 0}, ` +
+                    `calculated=${calculatedNetWorth}, stored=${firstYear.netWorth}`);
+            }
+        }
+
         this.charts.netWorth.update();
 
         // Update summary stats
@@ -4512,6 +4525,7 @@ class UIController {
         this.model.housing.status = status;
         document.getElementById('rentalSection').style.display = status === 'rent' ? 'block' : 'none';
         document.getElementById('ownershipSection').style.display = status === 'own' ? 'block' : 'none';
+        this.updateDashboard();
         this.saveData();
     }
 
