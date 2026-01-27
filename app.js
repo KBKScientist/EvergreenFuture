@@ -1846,6 +1846,7 @@ class UIController {
         this.projectionEngine = new ProjectionEngine(this.model);
         this.simulator = new MonteCarloSimulator(this.model, this.projectionEngine);
         this.charts = {};
+        this.currentScenarioId = null; // Track which scenario is currently loaded
 
         this.initializeEventListeners();
         this.initializeCharts();
@@ -6023,46 +6024,12 @@ class UIController {
                     return;
                 }
 
-                // Ask user if they want to import as scenario or replace current data
-                this.showImportOptionsModal(parsed);
+                // Import as a new scenario
+                this.showScenarioNameModal(parsed);
             };
             reader.readAsText(file);
         };
         input.click();
-    }
-
-    showImportOptionsModal(parsed) {
-        const modal = this.createModal('Import Options', `
-            <div class="modal-body">
-                <p>How would you like to import this data?</p>
-
-                <div style="margin: 20px 0;">
-                    <button class="btn btn-primary" id="importAsScenarioBtn" style="width: 100%; margin-bottom: 10px; padding: 15px;">
-                        <strong>Import as New Scenario</strong><br>
-                        <small>Add this as a new scenario to compare with your current plan</small>
-                    </button>
-
-                    <button class="btn btn-secondary" id="replaceCurrentBtn" style="width: 100%; padding: 15px;">
-                        <strong>Replace Current Data</strong><br>
-                        <small>Overwrite your current plan with this data (scenarios will be preserved)</small>
-                    </button>
-                </div>
-            </div>
-        `);
-
-        document.body.appendChild(modal);
-
-        setTimeout(() => {
-            document.getElementById('importAsScenarioBtn').addEventListener('click', () => {
-                this.closeModal();
-                this.showScenarioNameModal(parsed);
-            });
-
-            document.getElementById('replaceCurrentBtn').addEventListener('click', () => {
-                this.closeModal();
-                this.loadImportedData(parsed);
-            });
-        }, 0);
     }
 
     showScenarioNameModal(parsed) {
@@ -6123,135 +6090,15 @@ class UIController {
                 this.saveData();
                 this.closeModal();
 
+                // Load the new scenario automatically
+                this.loadScenario(newScenario.id);
+
                 // Switch to scenarios tab
                 document.querySelector('[data-tab="scenarios"]').click();
 
-                alert(`✓ Scenario "${name}" created successfully!\n\nYou can now compare it with other scenarios.`);
+                alert(`✓ Scenario "${name}" imported and loaded!\n\nYou can now view it in the dashboard or compare it with other scenarios.`);
             });
         }, 0);
-    }
-
-    loadImportedData(parsed) {
-        // Use the same loading logic as loadData for consistency
-        this.model.accounts = parsed.accounts || [];
-        this.model.incomes = (parsed.incomes || []).map(inc => ({
-            ...inc,
-            ownerId: inc.ownerId || 'household',
-            phasedRetirement: inc.phasedRetirement || null
-        }));
-        this.model.expenses = parsed.expenses || [];
-        this.model.milestones = (parsed.milestones || []).map(m => ({
-            ...m,
-            ownerId: m.ownerId || 'household'
-        }));
-
-        // Handle backwards compatibility
-        if (parsed.settings) {
-            if (parsed.settings.household) {
-                this.model.settings = parsed.settings;
-
-                // Add missing socialSecurity to Person A if needed
-                if (!this.model.settings.household.personA.socialSecurity) {
-                    this.model.settings.household.personA.socialSecurity = {
-                        enabled: false,
-                        annualAmount: 0,
-                        startAge: 67
-                    };
-                }
-
-                // Add missing socialSecurity to Person B if needed
-                if (this.model.settings.household.personB && !this.model.settings.household.personB.socialSecurity) {
-                    this.model.settings.household.personB.socialSecurity = {
-                        enabled: false,
-                        annualAmount: 0,
-                        startAge: 67
-                    };
-                }
-
-                // Add missing pension if needed
-                if (!this.model.settings.pension) {
-                    this.model.settings.pension = {
-                        enabled: false,
-                        owner: 'personA',
-                        name: '',
-                        annualAmount: 0,
-                        startYear: this.model.settings.planStartYear,
-                        growth: 0
-                    };
-                }
-            } else {
-                const currentYear = new Date().getFullYear();
-                this.model.settings = {
-                    planStartYear: currentYear,
-                    projectionHorizon: 40,
-                    inflation: parsed.settings.inflation || 3.0,
-                    filingStatus: parsed.settings.filingStatus || 'single',
-                    household: {
-                        personA: {
-                            name: 'Person A',
-                            birthYear: currentYear - (parsed.settings.currentAge || 30),
-                            retirementYear: currentYear + ((parsed.settings.retirementAge || 65) - (parsed.settings.currentAge || 30)),
-                            lifeExpectancy: parsed.settings.lifeExpectancy || 95,
-                            socialSecurity: {
-                                enabled: false,
-                                annualAmount: 0,
-                                startAge: 67
-                            }
-                        },
-                        personB: null
-                    },
-                    pension: {
-                        enabled: false,
-                        owner: 'personA',
-                        name: '',
-                        annualAmount: 0,
-                        startYear: currentYear,
-                        growth: 0
-                    }
-                };
-            }
-        }
-
-        this.model.investmentGlidePath = parsed.investmentGlidePath || [
-            { startYear: new Date().getFullYear(), expectedReturn: 7, volatility: 15 }
-        ];
-
-        // Migration: Fix old 'always' withdrawalMode to 'as_needed'
-        let withdrawalModeFromFile = parsed.withdrawalStrategy?.withdrawalMode || 'as_needed';
-        if (withdrawalModeFromFile === 'always') {
-            console.warn('Migrating loaded file withdrawalMode from "always" to "as_needed"');
-            withdrawalModeFromFile = 'as_needed';
-        }
-
-        this.model.withdrawalStrategy = {
-            ...(parsed.withdrawalStrategy || {}),
-            type: parsed.withdrawalStrategy?.type || 'fixed_percentage',
-            autoWithdrawalStart: parsed.withdrawalStrategy?.autoWithdrawalStart !== false,
-            withdrawalMode: withdrawalModeFromFile,
-            taxOptimizedSequence: parsed.withdrawalStrategy?.taxOptimizedSequence || ['cash', 'taxable', 'traditional', 'roth', 'hsa']
-        };
-
-        // MIGRATION: Fix old withdrawal sequences that don't include 'cash'
-        if (this.model.withdrawalStrategy.taxOptimizedSequence &&
-            !this.model.withdrawalStrategy.taxOptimizedSequence.includes('cash')) {
-            console.warn('Migrating imported file withdrawal sequence to include cash accounts');
-            this.model.withdrawalStrategy.taxOptimizedSequence.unshift('cash');
-        }
-
-        // Preserve existing scenarios when replacing data
-        const existingScenarios = this.model.scenarios;
-        this.model.scenarios = existingScenarios;
-
-        // Load housing data
-        this.model.housing = parsed.housing || this.model.housing;
-
-        // Load debts data
-        this.model.debts = parsed.debts || this.model.debts;
-
-        this.updateDashboard();
-        this.saveData();
-
-        alert('✓ Data imported successfully!\n\nYour plan has been updated with the imported data.');
     }
 
     exportData() {
@@ -8148,8 +7995,12 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         this.model.investmentGlidePath = JSON.parse(JSON.stringify(scenario.data.investmentGlidePath));
         this.model.withdrawalStrategy = JSON.parse(JSON.stringify(scenario.data.withdrawalStrategy));
 
+        // Mark this scenario as currently loaded
+        this.currentScenarioId = scenarioId;
+
         this.saveData();
         this.updateDashboard();
+        this.updateScenariosList(); // Refresh to show current indicator
         this.switchTab('dashboard');
         alert(`✓ Loaded scenario "${scenario.name}"\n\nYou can now view Monte Carlo, Sankey, and all other tabs with this scenario's data.`);
     }
@@ -8194,15 +8045,19 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         container.innerHTML = '<div class="item-list">' +
             this.model.scenarios.map(scenario => {
                 const date = new Date(scenario.date).toLocaleDateString();
+                const isCurrent = this.currentScenarioId === scenario.id;
+                const currentBadge = isCurrent ? '<span style="background: var(--success); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 8px; font-weight: 600;">CURRENT</span>' : '';
+                const highlightStyle = isCurrent ? 'border: 2px solid var(--success); background: rgba(16, 185, 129, 0.05);' : '';
+
                 return `
-                    <div class="list-item">
+                    <div class="list-item" style="${highlightStyle}">
                         <div class="list-item-info">
-                            <h3>${scenario.name}</h3>
+                            <h3>${scenario.name}${currentBadge}</h3>
                             <p>Saved on ${date}</p>
                         </div>
                         <div class="list-item-actions">
                             <button class="btn btn-primary" onclick="ui.compareScenario(${scenario.id})">Compare to Current</button>
-                            <button class="btn btn-secondary" onclick="ui.loadScenario(${scenario.id})">Load</button>
+                            <button class="btn btn-secondary" onclick="ui.loadScenario(${scenario.id})" ${isCurrent ? 'disabled' : ''}>Load</button>
                             <button class="btn btn-danger" onclick="ui.deleteScenario(${scenario.id})">Delete</button>
                         </div>
                     </div>

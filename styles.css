@@ -1,27 +1,29 @@
 :root {
-    --primary-color: #3b82f6;
-    --primary-hover: #2563eb;
-    --primary-light: #dbeafe;
-    --secondary-color: #6366f1;
-    --secondary-hover: #4f46e5;
-    --accent-color: #8b5cf6;
+    /* Evergreen Future - Green primary with blue accents */
+    --primary-color: #10b981; /* Emerald green */
+    --primary-hover: #059669;
+    --primary-light: #d1fae5;
+    --secondary-color: #14b8a6; /* Teal */
+    --secondary-hover: #0d9488;
+    --accent-color: #06b6d4; /* Cyan blue */
+    --success: #10b981; /* Match primary */
     --success-color: #10b981;
     --success-light: #d1fae5;
     --warning-color: #f59e0b;
     --warning-light: #fef3c7;
     --danger-color: #ef4444;
     --danger-light: #fee2e2;
-    --bg-color: #f1f5f9;
-    --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --bg-color: #f0fdf4; /* Very light green tint */
+    --bg-gradient: linear-gradient(135deg, #10b981 0%, #059669 50%, #0d9488 100%); /* Green gradient */
     --card-bg: #ffffff;
-    --card-hover: #fafafa;
-    --text-primary: #0f172a;
-    --text-secondary: #64748b;
-    --border-color: #e2e8f0;
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    --card-hover: #f9fafb;
+    --text-primary: #064e3b; /* Dark green */
+    --text-secondary: #047857; /* Medium green */
+    --border-color: #d1fae5;
+    --shadow-sm: 0 1px 2px 0 rgba(16, 185, 129, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(16, 185, 129, 0.1), 0 2px 4px -1px rgba(16, 185, 129, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(16, 185, 129, 0.1), 0 4px 6px -2px rgba(16, 185, 129, 0.05);
+    --shadow-xl: 0 20px 25px -5px rgba(16, 185, 129, 0.1), 0 10px 10px -5px rgba(16, 185, 129, 0.04);
 }
 
 * {
