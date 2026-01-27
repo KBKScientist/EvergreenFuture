@@ -959,16 +959,18 @@ class ProjectionEngine {
 
             // Apply withdrawals using tax-optimized sequence (after retirement) or proportionally (before retirement)
             if (withdrawals > 0) {
-                if (year >= withdrawalStartYear && this.model.withdrawalStrategy.type === 'tax_optimized') {
+                if (year >= withdrawalStartYear) {
                     // Detect tax bomb year - if so, adjust withdrawal sequence to minimize taxes
                     let customSequence = null;
-                    if (milestoneTaxableIncome > 0) {
+                    const totalTaxBombs = milestoneTaxableIncome + debtTaxableIncome;
+                    if (totalTaxBombs > 0) {
                         // Tax bomb detected! Skip traditional accounts to avoid stacking taxable income
                         // Sequence: taxable → roth → hsa → traditional (traditional as last resort)
                         customSequence = ['taxable', 'roth', 'hsa', 'traditional'];
+                        console.log(`Year ${year}: TAX BOMB DETECTED ($${totalTaxBombs.toLocaleString()}) - Using Roth-first sequence`);
                     }
 
-                    // Use tax-optimized withdrawal sequence
+                    // Use tax-optimized withdrawal sequence for ALL withdrawal types after retirement
                     const withdrawalDetails = this.executeWithdrawalSequence(
                         accountBalances,
                         withdrawals,
@@ -983,6 +985,12 @@ class ProjectionEngine {
 
                     // Store full withdrawal breakdown for Sankey diagram
                     withdrawalsByType = withdrawalDetails.byType;
+
+                    // Log withdrawal details for tax bomb years
+                    if (totalTaxBombs > 0) {
+                        console.log(`  Withdrawals by type:`, withdrawalsByType);
+                        console.log(`  Traditional withdrawals: $${traditionalWithdrawals.toLocaleString()}`);
+                    }
                 } else {
                     // Before retirement or using old strategy: withdraw proportionally
                     const totalBalance = this.getTotalBalance(accountBalances);
@@ -5543,18 +5551,20 @@ class UIController {
             const rate = parseFloat(document.getElementById('loanRate').value) || 0;
             const payment = parseFloat(document.getElementById('loanPayment').value) || 0;
             const startYear = parseInt(document.getElementById('loanStartYear').value) || this.model.settings.planStartYear;
+            const termYears = parseInt(document.getElementById('loanTerm').value) || 10;
 
             if (balance <= 0 || payment <= 0) {
                 document.getElementById('payoffProjections').innerHTML = 'Enter loan details above to see projected payoff amounts';
                 return;
             }
 
-            // Calculate payoff amounts for next 10 years
+            // Calculate payoff amounts for the full loan term (or until paid off)
             const monthlyRate = rate / 100 / 12;
             let projections = [];
             let currentBalance = balance;
+            const maxYears = Math.min(termYears, 40); // Cap at 40 years for display
 
-            for (let year = 0; year <= 10; year++) {
+            for (let year = 0; year <= maxYears; year++) {
                 const targetYear = startYear + year;
                 const monthsElapsed = year * 12;
 
