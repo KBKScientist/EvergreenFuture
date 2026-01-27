@@ -77,7 +77,7 @@ class FinancialModel {
             autoWithdrawalStart: true, // true = derive from retirement, false = use explicit year
             withdrawalMode: 'as_needed', // 'always' = apply strategy regardless of surplus/deficit, 'as_needed' = only withdraw when needed
             // Tax optimization configuration
-            taxOptimizedSequence: ['taxable', 'traditional', 'roth', 'hsa']
+            taxOptimizedSequence: ['cash', 'taxable', 'traditional', 'roth', 'hsa']
         };
         this.scenarios = [];
         this.validationErrors = [];
@@ -538,9 +538,6 @@ class ProjectionEngine {
     }
 
     projectNetWorth(years = 40) {
-        console.log('=== PROJECTION START ===');
-        console.log('Withdrawal strategy:', JSON.stringify(this.model.withdrawalStrategy));
-
         const projections = [];
         const currentYear = this.model.settings.planStartYear;
         const withdrawalStartYear = this.getWithdrawalStartYear();
@@ -686,12 +683,6 @@ class ProjectionEngine {
                     const sellingCostsAmount = saleHomeValue * ((property.sellingCosts || 8) / 100);
                     const netProceeds = saleHomeValue - saleMortgageBalance - sellingCostsAmount;
                     homeSaleProceeds += netProceeds;
-
-                    console.log(`Year ${year}: Selling ${property.name}`);
-                    console.log(`  Home Value: $${saleHomeValue.toLocaleString()}`);
-                    console.log(`  Mortgage Balance: $${saleMortgageBalance.toLocaleString()}`);
-                    console.log(`  Selling Costs (${property.sellingCosts}%): $${sellingCostsAmount.toLocaleString()}`);
-                    console.log(`  Net Proceeds: $${netProceeds.toLocaleString()}`);
                 }
             });
 
@@ -703,10 +694,6 @@ class ProjectionEngine {
                 if (milestone.year === year) {
                     if (milestone.isPositive) {
                         milestoneWindfalls += milestone.cost;
-                        // Debug large windfalls (inheritance, etc.)
-                        if (milestone.cost > 1000000) {
-                            console.log(`Year ${year}: Large windfall "${milestone.name}" = $${milestone.cost.toLocaleString()}`);
-                        }
                     } else {
                         milestoneCosts += milestone.cost;
                     }
@@ -770,11 +757,6 @@ class ProjectionEngine {
                 // Deficit - need to withdraw from portfolio
                 let neededWithdrawal = Math.abs(netCashFlow);
 
-                // Debug large deficits
-                if (neededWithdrawal > 50000) {
-                    console.log(`Year ${year}: Initial deficit of $${neededWithdrawal.toLocaleString()} (income: $${annualIncome.toLocaleString()}, expenses: $${annualExpenses.toLocaleString()}, taxes: $${annualTaxes.toLocaleString()})`);
-                }
-
                 // CRITICAL FIX: Account for taxes on withdrawals (circular dependency)
                 // We need to iteratively solve for the withdrawal amount that covers:
                 // 1. The deficit (expenses + taxes - income)
@@ -793,8 +775,8 @@ class ProjectionEngine {
                     // Estimate how much of the withdrawal will be from traditional accounts
                     const estimatedTraditionalWithdrawal = neededWithdrawal * traditionalPercentage;
 
-                    // Calculate total taxable income including estimated traditional withdrawal
-                    const estimatedTaxableIncome = annualIncome + milestoneTaxableIncome + estimatedTraditionalWithdrawal;
+                    // Calculate total taxable income including estimated traditional withdrawal and debt taxable income
+                    const estimatedTaxableIncome = annualIncome + milestoneTaxableIncome + debtTaxableIncome + estimatedTraditionalWithdrawal;
                     const estimatedTotalTaxes = this.calculateTaxes(estimatedTaxableIncome, filingStatus);
 
                     // Calculate new deficit including the higher taxes
@@ -834,9 +816,6 @@ class ProjectionEngine {
                         withdrawals = Math.max(neededWithdrawal, strategicWithdrawal); // Traditional: ensure minimum withdrawal
                     }
 
-                    if (year === 2033 || year === 2034 || strategicWithdrawal > neededWithdrawal) {
-                        console.log(`Year ${year}: Mode=${this.model.withdrawalStrategy.withdrawalMode}, Deficit=$${neededWithdrawal.toLocaleString()}, Strategic=$${strategicWithdrawal.toLocaleString()}, Actual=$${withdrawals.toLocaleString()} (balance=$${totalBalance.toLocaleString()}, iterations=${iterationCount})`);
-                    }
                     previousWithdrawal = withdrawals;
                 } else {
                     // Before withdrawal start year, only withdraw what's needed for deficit
@@ -888,17 +867,23 @@ class ProjectionEngine {
                 returnRate = applicableSegment.expectedReturn / 100;
             }
 
-            // Apply investment returns to AVERAGE balance (mid-year approximation)
-            // avg_balance = start_balance + 0.5*(contributions + windfalls) - 0.5*(withdrawals)
-            // This is more accurate than applying to start balance, especially in years with large withdrawals
-            const avgBalance = startBalance + 0.5 * (contributions + windfallContributions) - 0.5 * withdrawals;
-            const totalReturnsForYear = avgBalance * returnRate;
-
-            // Distribute returns proportionally across accounts
+            // CRITICAL FIX: Apply returns to each account based on its type
+            // - Cash accounts: use their fixed interest rate (typically 3-5%)
+            // - Investment accounts (taxable, traditional, roth, hsa): use glide path rate (8% → 6% → 4%)
             let totalInvestmentReturns = 0;
             accountBalances.forEach(acc => {
-                const proportionOfTotal = startBalance > 0 ? acc.balance / startBalance : 1 / accountBalances.length;
-                const accountReturns = totalReturnsForYear * proportionOfTotal;
+                let accountReturnRate;
+
+                if (acc.type === 'cash') {
+                    // Cash/savings accounts: use account-specific rate (doesn't follow glide path)
+                    accountReturnRate = acc.interestRate / 100;
+                } else {
+                    // Investment accounts: use glide path rate (changes over time based on risk tolerance)
+                    accountReturnRate = returnRate;
+                }
+
+                // Apply this account's return rate to its current balance
+                const accountReturns = acc.balance * accountReturnRate;
                 acc.balance += accountReturns;
                 totalInvestmentReturns += accountReturns;
             });
@@ -922,11 +907,6 @@ class ProjectionEngine {
 
             // Windfalls (inheritance, gifts, etc.) - only go to taxable/cash accounts, not retirement accounts
             if (windfallContributions > 0) {
-                // Debug large windfalls
-                if (windfallContributions > 1000000) {
-                    console.log(`Year ${year}: Adding windfall of $${windfallContributions.toLocaleString()} to taxable/cash accounts only`);
-                }
-
                 // Find taxable and cash accounts
                 const taxableAccounts = accountBalances.filter(acc =>
                     acc.type === 'taxable' || acc.type === 'cash'
@@ -965,8 +945,8 @@ class ProjectionEngine {
                     const totalTaxBombs = milestoneTaxableIncome + debtTaxableIncome;
                     if (totalTaxBombs > 0) {
                         // Tax bomb detected! Skip traditional accounts to avoid stacking taxable income
-                        // Sequence: taxable → roth → hsa → traditional (traditional as last resort)
-                        customSequence = ['taxable', 'roth', 'hsa', 'traditional'];
+                        // Sequence: cash → taxable → roth → hsa → traditional (traditional as last resort)
+                        customSequence = ['cash', 'taxable', 'roth', 'hsa', 'traditional'];
                         console.log(`Year ${year}: TAX BOMB DETECTED ($${totalTaxBombs.toLocaleString()}) - Using Roth-first sequence`);
                     }
 
@@ -986,11 +966,6 @@ class ProjectionEngine {
                     // Store full withdrawal breakdown for Sankey diagram
                     withdrawalsByType = withdrawalDetails.byType;
 
-                    // Log withdrawal details for tax bomb years
-                    if (totalTaxBombs > 0) {
-                        console.log(`  Withdrawals by type:`, withdrawalsByType);
-                        console.log(`  Traditional withdrawals: $${traditionalWithdrawals.toLocaleString()}`);
-                    }
                 } else {
                     // Before retirement or using old strategy: withdraw proportionally
                     const totalBalance = this.getTotalBalance(accountBalances);
@@ -1025,11 +1000,6 @@ class ProjectionEngine {
                         });
 
                         traditionalWithdrawals = withdrawalsByType.traditional || 0;
-
-                        if (year === 2033) {
-                            console.log(`Year ${year} withdrawal execution: target=$${withdrawals.toLocaleString()}, actual=$${actualTotalWithdrawn.toLocaleString()}, totalBalance=$${totalBalance.toLocaleString()}`);
-                            console.log('Withdrawals by type:', withdrawalsByType);
-                        }
                     }
                 }
             }
@@ -1077,11 +1047,6 @@ class ProjectionEngine {
 
             const endBalance = this.getTotalBalance(accountBalances);
 
-            // Debug large windfalls - log end balance after windfall year
-            if (milestoneWindfalls > 1000000) {
-                console.log(`Year ${year} END: Balance after windfall = $${endBalance.toLocaleString()} (started at $${startBalance.toLocaleString()}, added $${milestoneWindfalls.toLocaleString()}, returns $${totalInvestmentReturns.toLocaleString()})`);
-            }
-
             // SECOND PASS: Recalculate taxes including Traditional IRA/401k withdrawals
             // traditionalWithdrawals was already calculated in the withdrawal section above
             // These withdrawals are taxed as ordinary income
@@ -1091,73 +1056,6 @@ class ProjectionEngine {
 
             // Calculate additional tax burden from withdrawals
             const withdrawalTaxes = finalTaxes - annualTaxes;
-
-            // DETAILED TAX DEBUGGING OUTPUT for years 2033-2035 (configurable)
-            if (year >= 2033 && year <= 2035) {
-                console.log(`\n========== TAX CALCULATION DEBUG: YEAR ${year} ==========`);
-
-                // 1. Non-portfolio income breakdown
-                console.log(`\n[1] NON-PORTFOLIO INCOME:`);
-                console.log(`  Base Income (salary/pension): $${annualIncome.toLocaleString()}`);
-                console.log(`  Milestone Taxable Income: $${milestoneTaxableIncome.toLocaleString()}`);
-                console.log(`  Debt Taxable Income (forgiveness): $${debtTaxableIncome.toLocaleString()}`);
-
-                // 2. Expenses and cash needs
-                console.log(`\n[2] EXPENSES & CASH NEEDS:`);
-                console.log(`  Annual Expenses: $${annualExpenses.toLocaleString()}`);
-                console.log(`  Milestone Costs: $${milestoneCosts.toLocaleString()}`);
-                console.log(`  Initial Tax Estimate (before withdrawals): $${annualTaxes.toLocaleString()}`);
-                console.log(`  Cash Needed Before Tax Gross-Up: $${(annualExpenses + milestoneCosts + annualTaxes - annualIncome).toLocaleString()}`);
-
-                // 3. Tax gross-up loop details
-                console.log(`\n[3] TAX GROSS-UP LOOP:`);
-                if (withdrawals > 0 && year >= this.model.withdrawalStrategy.withdrawalStartYear) {
-                    const totalBalance = this.getTotalBalance(accountBalances);
-                    const traditionalBalance = this.getTotalByType(accountBalances, 'traditional');
-                    const traditionalPercentage = totalBalance > 0 ? traditionalBalance / totalBalance : 0;
-                    console.log(`  Portfolio: $${totalBalance.toLocaleString()} (${(traditionalPercentage * 100).toFixed(1)}% traditional)`);
-                    console.log(`  Converged after iteration(s) - see loop output above`);
-                } else {
-                    console.log(`  (No deficit or before withdrawal start year - no tax gross-up needed)`);
-                }
-
-                // 4. Actual withdrawals by account type
-                console.log(`\n[4] WITHDRAWALS BY ACCOUNT TYPE:`);
-                console.log(`  Total Withdrawn: $${withdrawals.toLocaleString()}`);
-                if (withdrawalsByType && Object.keys(withdrawalsByType).length > 0) {
-                    Object.entries(withdrawalsByType).forEach(([type, amount]) => {
-                        console.log(`    ${type}: $${amount.toLocaleString()}`);
-                    });
-                } else {
-                    console.log(`    (No withdrawals or breakdown not available)`);
-                }
-                console.log(`  Traditional Withdrawals (taxable): $${traditionalWithdrawals.toLocaleString()}`);
-
-                // 5. Standard deduction
-                const standardDeduction = this.getStandardDeduction(filingStatus);
-                console.log(`\n[5] STANDARD DEDUCTION:`);
-                console.log(`  Filing Status: ${filingStatus}`);
-                console.log(`  Standard Deduction: $${standardDeduction.toLocaleString()}`);
-
-                // 6. Taxable income calculation
-                console.log(`\n[6] TAXABLE INCOME CALCULATION:`);
-                console.log(`  Gross Income: $${annualIncome.toLocaleString()}`);
-                console.log(`  + Traditional Withdrawals: $${traditionalWithdrawals.toLocaleString()}`);
-                console.log(`  + Milestone Tax Bombs: $${milestoneTaxableIncome.toLocaleString()}`);
-                console.log(`  + Debt Tax Bombs: $${debtTaxableIncome.toLocaleString()}`);
-                console.log(`  = Total Taxable Income: $${totalTaxableIncome.toLocaleString()}`);
-                console.log(`  - Standard Deduction: $${standardDeduction.toLocaleString()}`);
-                const taxableAfterDeduction = Math.max(0, totalTaxableIncome - standardDeduction);
-                console.log(`  = Taxable After Deduction: $${taxableAfterDeduction.toLocaleString()}`);
-
-                // 7. Final tax calculation
-                console.log(`\n[7] FINAL TAX CALCULATION:`);
-                console.log(`  Federal Taxes: $${finalTaxes.toLocaleString()}`);
-                console.log(`  Effective Rate: ${totalTaxableIncome > 0 ? (finalTaxes / totalTaxableIncome * 100).toFixed(2) : 0}%`);
-                console.log(`  Marginal Bracket: ${this.getMarginalTaxBracket(totalTaxableIncome, filingStatus)}%`);
-
-                console.log(`\n========== END TAX DEBUG ==========\n`);
-            }
 
             // Validation: end_balance should equal start_balance + contributions + windfalls - withdrawals + returns
             const calculatedEnd = startBalance + contributions + windfallContributions - withdrawals + totalInvestmentReturns;
@@ -1224,9 +1122,11 @@ class ProjectionEngine {
     }
 
     executeWithdrawalSequence(accountBalances, targetWithdrawal, year, options = {}) {
+        // CRITICAL FIX: Include 'cash' in withdrawal sequence
+        // Cash should be withdrawn first (most liquid, no tax consequences)
         const sequence = options.forceTypes ||
             this.model.withdrawalStrategy.taxOptimizedSequence ||
-            ['taxable', 'traditional', 'roth', 'hsa'];
+            ['cash', 'taxable', 'traditional', 'roth', 'hsa'];
 
         let remaining = targetWithdrawal;
         let withdrawalDetails = {
@@ -1575,6 +1475,13 @@ class ProjectionEngine {
             const interest = balance * monthlyRate;
             const principal = loan.monthlyPayment - interest;
             balance -= principal;
+
+            // Protection against negative amortization (infinite loop)
+            if (balance > loan.balance * 2) {
+                console.warn(`Loan "${loan.name}" has negative amortization (payment < interest). Balance growing indefinitely.`);
+                balance = loan.balance; // Reset to original balance
+                break;
+            }
         }
 
         // Calculate this year's payments
@@ -2451,13 +2358,7 @@ class UIController {
     }
 
     updateDashboard() {
-        console.log('=== updateDashboard called ===');
-        console.log('Accounts:', this.model.accounts.length);
-        console.log('Incomes:', this.model.incomes.length);
-        console.log('Expenses:', this.model.expenses.length);
-
         const projections = this.projectionEngine.projectNetWorth(40);
-        console.log('Projections generated:', projections.length);
 
         // Update net worth chart with breakdown
         this.charts.netWorth.data.labels = projections.map(p => p.year);
@@ -3014,13 +2915,6 @@ class UIController {
             return;
         }
 
-        // DEBUG: Log projection data for this year
-        console.log(`=== SANKEY DEBUG for ${selectedYear} ===`);
-        console.log('yearData.income:', yearData.income);
-        console.log('yearData.withdrawals:', yearData.withdrawals);
-        console.log('yearData.traditionalWithdrawals:', yearData.traditionalWithdrawals);
-        console.log('yearData.milestoneWindfalls:', yearData.milestoneWindfalls || 0);
-
         // Calculate income components for that year
         let annualIncome = yearData.income;
         let annualExpenses = yearData.expenses;
@@ -3147,39 +3041,37 @@ class UIController {
         // Only show withdrawals as actual usable cash flow
 
         // Break down withdrawals by account type using actual withdrawal data
-        console.log('yearData.withdrawalsByType:', yearData.withdrawalsByType);
-        console.log('Has withdrawalsByType?', yearData.withdrawalsByType && Object.keys(yearData.withdrawalsByType).length > 0);
+        if (yearData.withdrawals > 0) {
+            if (yearData.withdrawalsByType && Object.keys(yearData.withdrawalsByType).length > 0) {
+                const typeLabels = {
+                    cash: 'Cash/Savings',
+                    taxable: 'Taxable Brokerage',
+                    traditional: 'Traditional IRA/401k',
+                    roth: 'Roth IRA',
+                    hsa: 'HSA'
+                };
 
-        if (yearData.withdrawals > 0 && yearData.withdrawalsByType && Object.keys(yearData.withdrawalsByType).length > 0) {
-            const typeLabels = {
-                cash: 'Cash/Savings',
-                taxable: 'Taxable Brokerage',
-                traditional: 'Traditional IRA/401k',
-                roth: 'Roth IRA',
-                hsa: 'HSA'
-            };
-
-            // Use actual withdrawal breakdown from projection
-            Object.keys(yearData.withdrawalsByType).forEach(accountType => {
-                const amount = yearData.withdrawalsByType[accountType];
-                console.log(`  Adding withdrawal from ${accountType}: $${amount}`);
-                if (amount > 0.01) { // Only show significant amounts
-                    const label = typeLabels[accountType] || accountType; // Fallback to raw type if not in map
-                    incomeSources.push({
-                        name: label + ' Withdrawal',
-                        amount: amount,
-                        category: 'withdrawal_' + accountType  // Special category for withdrawal colors
-                    });
-                }
-            });
-        } else if (yearData.withdrawals > 0) {
-            // Fallback for old data without withdrawalsByType
-            console.log('Using fallback - adding total withdrawals:', yearData.withdrawals);
-            incomeSources.push({
-                name: 'Portfolio Withdrawals',
-                amount: yearData.withdrawals,
-                category: 'withdrawal_general'
-            });
+                // Use actual withdrawal breakdown from projection
+                Object.keys(yearData.withdrawalsByType).forEach(accountType => {
+                    const amount = yearData.withdrawalsByType[accountType];
+                    if (amount > 0.01) { // Only show significant amounts
+                        const label = typeLabels[accountType] || accountType; // Fallback to raw type if not in map
+                        incomeSources.push({
+                            name: label + ' Withdrawal',
+                            amount: amount,
+                            category: 'withdrawal_' + accountType  // Special category for withdrawal colors
+                        });
+                    }
+                });
+            } else {
+                // Fallback: withdrawalsByType is missing or empty, but we have total withdrawals
+                console.warn(`Year ${selectedYear}: withdrawalsByType is empty but withdrawals=$${yearData.withdrawals} - using fallback`);
+                incomeSources.push({
+                    name: 'Portfolio Withdrawals',
+                    amount: yearData.withdrawals,
+                    category: 'withdrawal_general'
+                });
+            }
         }
 
         // Taxable milestone income (e.g., student loan forgiveness "tax bombs")
@@ -3198,18 +3090,11 @@ class UIController {
         //     });
         // }
 
-        // DEBUG: Log all collected income sources
-        console.log('Income sources collected:');
+        // Calculate total collected income
         let totalCollected = 0;
         incomeSources.forEach(src => {
-            console.log(`  ${src.name}: $${src.amount.toFixed(2)}`);
             totalCollected += src.amount;
         });
-        console.log('Total collected from sources:', totalCollected);
-        console.log('yearData.income (earned income only):', yearData.income);
-        console.log('yearData.withdrawals:', yearData.withdrawals);
-        console.log('Expected total inflows:', yearData.income + yearData.withdrawals);
-        console.log('Actual total inflows:', totalCollected);
 
         // Collect expenses by category for that year
         const expensesByCategory = {};
@@ -3290,19 +3175,11 @@ class UIController {
         const totalOutflows = yearData.taxes + annualExpenses + (yearData.milestoneCosts || 0);
         const netSavings = totalInflows - totalOutflows;
 
-        // DEBUG: Verify Sankey balance
-        const manualExpensesTotal = Object.values(expensesByCategory).reduce((sum, val) => sum + val, 0);
-        console.log(`Sankey totals: inflows=${totalInflows.toLocaleString()}, outflows=${totalOutflows.toLocaleString()}, netSavings=${netSavings.toLocaleString()}`);
-        console.log(`Manual expenses total: ${manualExpensesTotal.toLocaleString()}, yearData.expenses: ${annualExpenses.toLocaleString()}`);
-
-        // Check balance - inflows should equal outflows plus net savings
-        // totalCollected = income + withdrawals + windfalls (from incomeSources)
-        // totalInflows = income + withdrawals + windfalls (from yearData)
-        // In surplus years, netSavings > 0 and gets invested (not shown as Sankey outflow)
+        // Check balance - in surplus years, netSavings > 0 and gets invested
         // In deficit years, withdrawals cover the gap
         const inflowOutflowDiff = totalCollected - totalOutflows;
         if (Math.abs(inflowOutflowDiff - netSavings) > 1) {
-            console.warn(`Sankey imbalance: collected=$${totalCollected.toFixed(2)}, outflows=$${totalOutflows.toFixed(2)}, diff=$${inflowOutflowDiff.toFixed(2)}, expected netSavings=$${netSavings.toFixed(2)}`);
+            console.warn(`Sankey imbalance detected in year ${selectedYear}: inflows=${totalCollected.toFixed(2)}, outflows=${totalOutflows.toFixed(2)}, difference=${inflowOutflowDiff.toFixed(2)}`);
         }
 
         // Helper function to generate color from string (for custom categories)
@@ -3405,9 +3282,9 @@ class UIController {
             });
         }
 
-        // Add savings node if positive net savings (netSavings calculated earlier for colorMap)
+        // Add savings node if positive net savings, or deficit node if negative
         if (netSavings > 0.01) {
-            // Surplus year - add savings node
+            // Surplus year - add savings node (money flows OUT from Total Income)
             const savingsNodeId = nodeId++;
             nodes.push({
                 name: 'Savings/Investments',
@@ -3417,6 +3294,20 @@ class UIController {
                 source: totalIncomeNodeId,
                 target: savingsNodeId,
                 value: netSavings
+            });
+        } else if (netSavings < -0.01) {
+            // Deficit year - add "From Returns" node (money flows IN to Total Income)
+            // This represents the difference being covered by investment returns
+            const deficitNodeId = nodeId++;
+            nodes.push({
+                name: 'From Investment Returns',
+                type: 'income',
+                category: 'investment'
+            });
+            links.push({
+                source: deficitNodeId,
+                target: totalIncomeNodeId,
+                value: Math.abs(netSavings)
             });
         }
 
@@ -3428,20 +3319,6 @@ class UIController {
                 value: source.amount
             });
         });
-
-        // DEBUG: Log expenses
-        console.log('Expenses by category:');
-        let totalExpensesCollected = 0;
-        Object.keys(expensesByCategory).forEach(category => {
-            console.log(`  ${category}: $${expensesByCategory[category].toFixed(2)}`);
-            totalExpensesCollected += expensesByCategory[category];
-        });
-        console.log('Total expenses collected:', totalExpensesCollected);
-        console.log('yearData.expenses:', yearData.expenses);
-        console.log('yearData.taxes:', yearData.taxes);
-        console.log('Total outflows (expenses + taxes):', totalExpensesCollected + yearData.taxes);
-        console.log('Total inflows:', totalCollected);
-        console.log('SANKEY NODE VALUE should be max of inflows/outflows:', Math.max(totalCollected, totalExpensesCollected + yearData.taxes));
 
         // Create links from total income to expense categories
         Object.keys(expensesByCategory).forEach(category => {
@@ -5743,8 +5620,15 @@ class UIController {
                 withdrawalStartYear: parsed.withdrawalStrategy?.withdrawalStartYear || null,
                 autoWithdrawalStart: parsed.withdrawalStrategy?.autoWithdrawalStart !== false,
                 withdrawalMode: withdrawalMode,
-                taxOptimizedSequence: parsed.withdrawalStrategy?.taxOptimizedSequence || ['taxable', 'traditional', 'roth', 'hsa']
+                taxOptimizedSequence: parsed.withdrawalStrategy?.taxOptimizedSequence || ['cash', 'taxable', 'traditional', 'roth', 'hsa']
             };
+
+            // MIGRATION: Fix old withdrawal sequences that don't include 'cash'
+            if (this.model.withdrawalStrategy.taxOptimizedSequence &&
+                !this.model.withdrawalStrategy.taxOptimizedSequence.includes('cash')) {
+                console.warn('Migrating old withdrawal sequence to include cash accounts');
+                this.model.withdrawalStrategy.taxOptimizedSequence.unshift('cash');
+            }
 
             this.model.scenarios = parsed.scenarios || [];
 
@@ -5762,15 +5646,10 @@ class UIController {
 
     parseCSVImport(csvContent) {
         // Parse CSV back into the data structure
-        console.log('=== CSV IMPORT DEBUG ===');
-        console.log('First 500 chars:', csvContent.substring(0, 500));
-
         // Normalize line endings: handle CRLF (\r\n), CR (\r), and LF (\n)
         // Excel on Windows uses CRLF, old Mac uses CR, Unix/modern uses LF
         const normalizedContent = csvContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         const lines = normalizedContent.split('\n');
-        console.log('Total lines:', lines.length);
-        console.log('First 10 lines:', lines.slice(0, 10));
 
         const data = {
             accounts: [],
@@ -5792,7 +5671,6 @@ class UIController {
             let line = lines[i].trim();
             if (!line) continue;
 
-            console.log(`Line ${i}: "${line.substring(0, 80)}"`);
 
             // Section headers (check if line starts with [ and contains ])
             if (line.startsWith('[')) {
@@ -5800,7 +5678,6 @@ class UIController {
                 const closeBracket = line.indexOf(']');
                 if (closeBracket > 0) {
                     currentSection = line.slice(1, closeBracket);
-                    console.log(`Found section: ${currentSection}`);
                     headers = [];
                     continue;
                 }
@@ -5839,28 +5716,23 @@ class UIController {
             };
 
             const values = parseLine(line);
-            console.log(`  Parsed values (${values.length}):`, values);
 
             // Skip empty lines (lines with no values after removing trailing empties)
             if (values.length === 0) {
-                console.log('  Skipping empty line');
                 continue;
             }
 
             // First line after section is headers
             if (headers.length === 0 && currentSection) {
                 headers = values;
-                console.log('  Set headers:', headers);
                 continue;
             }
 
             // Parse data based on section
             if (!currentSection) {
-                console.log('  No current section, skipping');
                 continue;
             }
 
-            console.log(`  Processing data row for section: ${currentSection}`);
 
             const parseRow = () => {
                 const obj = {};
@@ -5882,9 +5754,7 @@ class UIController {
 
             switch (currentSection) {
                 case 'SETTINGS':
-                    console.log('  → Processing SETTINGS');
                     const settings = parseRow();
-                    console.log('  → Settings parsed:', settings);
                     data.settings.planStartYear = settings.PlanStartYear;
                     data.settings.projectionHorizon = settings.ProjectionHorizon;
                     data.settings.inflation = settings.Inflation;
@@ -5922,9 +5792,7 @@ class UIController {
                     break;
 
                 case 'ACCOUNTS':
-                    console.log('  → Processing ACCOUNT');
                     const account = parseRow();
-                    console.log('  → Account parsed:', account);
                     data.accounts.push({
                         id: Date.now() + Math.random(),
                         name: account.Name,
@@ -6072,7 +5940,7 @@ class UIController {
                         withdrawalStartYear: ws.WithdrawalStartYear || null,
                         autoWithdrawalStart: !ws.WithdrawalStartYear,
                         withdrawalMode: ws.WithdrawalMode,
-                        taxOptimizedSequence: ['taxable', 'traditional', 'roth', 'hsa']
+                        taxOptimizedSequence: ['cash', 'taxable', 'traditional', 'roth', 'hsa']
                     };
                     break;
             }
@@ -6091,12 +5959,6 @@ class UIController {
         }
 
         // Validate that we loaded essential data
-        console.log('=== CSV IMPORT RESULTS ===');
-        console.log('Accounts:', data.accounts.length);
-        console.log('Incomes:', data.incomes.length);
-        console.log('Expenses:', data.expenses.length);
-        console.log('Settings:', data.settings);
-
         if (data.accounts.length === 0) {
             console.error('WARNING: No accounts were loaded from CSV!');
         }
@@ -6109,37 +5971,22 @@ class UIController {
         input.type = 'file';
         input.accept = '.csv,.json';
         input.onchange = (e) => {
-            console.log('=== FILE SELECTED ===');
             const file = e.target.files[0];
-            console.log('File object:', file);
             const reader = new FileReader();
             reader.onload = (event) => {
-                console.log('=== FILE READ COMPLETE ===');
                 const content = event.target.result;
                 let parsed;
 
                 try {
                     // Detect file format and parse accordingly
                     if (file.name.endsWith('.csv')) {
-                        console.log('=== IMPORT FILE INFO ===');
-                        console.log('File name:', file.name);
-                        console.log('File size:', file.size, 'bytes');
-                        console.log('Content length:', content.length);
-                        console.log('First 500 chars of file:', content.substring(0, 500));
-                        console.log('Line endings detected:', content.includes('\r\n') ? 'CRLF (Windows)' : content.includes('\r') ? 'CR (Old Mac)' : 'LF (Unix)');
-
                         parsed = this.parseCSVImport(content);
-
-                        console.log('=== PARSE COMPLETE ===');
-                        console.log('Parsed data:', parsed);
                     } else {
                         // JSON format
                         parsed = JSON.parse(content);
                     }
                 } catch (error) {
-                    console.error('=== IMPORT ERROR ===');
                     console.error('Error during import:', error);
-                    console.error('Error stack:', error.stack);
                     alert('Error importing file: ' + error.message);
                     return;
                 }
@@ -6272,8 +6119,15 @@ class UIController {
                     type: parsed.withdrawalStrategy?.type || 'fixed_percentage',
                     autoWithdrawalStart: parsed.withdrawalStrategy?.autoWithdrawalStart !== false,
                     withdrawalMode: withdrawalModeFromFile,
-                    taxOptimizedSequence: parsed.withdrawalStrategy?.taxOptimizedSequence || ['taxable', 'traditional', 'roth', 'hsa']
+                    taxOptimizedSequence: parsed.withdrawalStrategy?.taxOptimizedSequence || ['cash', 'taxable', 'traditional', 'roth', 'hsa']
                 };
+
+                // MIGRATION: Fix old withdrawal sequences that don't include 'cash'
+                if (this.model.withdrawalStrategy.taxOptimizedSequence &&
+                    !this.model.withdrawalStrategy.taxOptimizedSequence.includes('cash')) {
+                    console.warn('Migrating imported file withdrawal sequence to include cash accounts');
+                    this.model.withdrawalStrategy.taxOptimizedSequence.unshift('cash');
+                }
 
                 this.model.scenarios = parsed.scenarios || [];
 
