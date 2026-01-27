@@ -7460,179 +7460,477 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' �
         const scenario = this.model.scenarios.find(s => s.id === scenarioId);
         if (!scenario) return;
 
-        // Create comparison report
-        let report = `═══════════════════════════════════════════════════════\n`;
-        report += `SCENARIO COMPARISON: "${scenario.name}"\n`;
-        report += `═══════════════════════════════════════════════════════\n\n`;
+        // Store scenario ID for the Load button in modal
+        window.currentComparisonScenarioId = scenarioId;
 
+        let html = '';
+
+        // Description at the top
         if (scenario.description) {
-            report += `Description: ${scenario.description}\n\n`;
+            html += `<div class="comparison-description">
+                <p>${this.escapeHtml(scenario.description)}</p>
+            </div>`;
         }
 
-        // Compare accounts
-        report += `───────────────────────────────────────────────────────\n`;
-        report += `ACCOUNTS\n`;
-        report += `───────────────────────────────────────────────────────\n`;
+        // ACCOUNTS SECTION
+        html += `<div class="comparison-section">
+            <div class="comparison-section-header">
+                <span class="comparison-section-icon">💰</span>
+                <h3>Accounts</h3>
+            </div>`;
+
         const currentAccounts = this.model.accounts;
         const scenarioAccounts = scenario.data.accounts || [];
-
         const currentTotal = currentAccounts.reduce((sum, a) => sum + a.balance, 0);
         const scenarioTotal = scenarioAccounts.reduce((sum, a) => sum + a.balance, 0);
+        const diff = scenarioTotal - currentTotal;
 
-        report += `Current Total: $${currentTotal.toLocaleString()}\n`;
-        report += `Scenario Total: $${scenarioTotal.toLocaleString()}\n`;
-        report += `Difference: $${(scenarioTotal - currentTotal).toLocaleString()}\n\n`;
+        html += `<div class="comparison-summary">
+            <div class="comparison-summary-item">
+                <div class="comparison-summary-label">Current Total</div>
+                <div class="comparison-summary-value">$${currentTotal.toLocaleString()}</div>
+            </div>
+            <div class="comparison-summary-item">
+                <div class="comparison-summary-label">Scenario Total</div>
+                <div class="comparison-summary-value">$${scenarioTotal.toLocaleString()}</div>
+            </div>
+            <div class="comparison-summary-item">
+                <div class="comparison-summary-label">Difference</div>
+                <div class="comparison-summary-value ${diff > 0 ? 'positive' : diff < 0 ? 'negative' : ''}">
+                    ${diff >= 0 ? '+' : ''}$${diff.toLocaleString()}
+                </div>
+            </div>
+        </div>`;
 
-        // List account changes
+        html += `<div class="comparison-items">`;
         scenarioAccounts.forEach(sAcc => {
             const cAcc = currentAccounts.find(a => a.id === sAcc.id || a.name === sAcc.name);
             if (!cAcc) {
-                report += `  + NEW: ${sAcc.name} (${sAcc.type}): $${sAcc.balance.toLocaleString()}\n`;
+                html += `<div class="comparison-item added">
+                    <div class="comparison-item-header">
+                        <span class="comparison-item-icon">+</span>
+                        <span class="comparison-item-name">${this.escapeHtml(sAcc.name)}</span>
+                    </div>
+                    <div class="comparison-item-details">
+                        <div>Type: ${sAcc.type}</div>
+                        <div>Balance: $${sAcc.balance.toLocaleString()}</div>
+                    </div>
+                </div>`;
             } else if (cAcc.balance !== sAcc.balance || cAcc.type !== sAcc.type) {
-                report += `  ≠ CHANGED: ${sAcc.name}\n`;
-                if (cAcc.type !== sAcc.type) report += `      Type: ${cAcc.type} → ${sAcc.type}\n`;
-                if (cAcc.balance !== sAcc.balance) report += `      Balance: $${cAcc.balance.toLocaleString()} → $${sAcc.balance.toLocaleString()}\n`;
+                html += `<div class="comparison-item changed">
+                    <div class="comparison-item-header">
+                        <span class="comparison-item-icon">≠</span>
+                        <span class="comparison-item-name">${this.escapeHtml(sAcc.name)}</span>
+                    </div>
+                    <div class="comparison-item-details">`;
+                if (cAcc.type !== sAcc.type) {
+                    html += `<div>Type: ${cAcc.type} <span class="comparison-arrow">→</span> ${sAcc.type}</div>`;
+                }
+                if (cAcc.balance !== sAcc.balance) {
+                    html += `<div>Balance: $${cAcc.balance.toLocaleString()} <span class="comparison-arrow">→</span> $${sAcc.balance.toLocaleString()}</div>`;
+                }
+                html += `</div></div>`;
             }
         });
         currentAccounts.forEach(cAcc => {
             if (!scenarioAccounts.find(a => a.id === cAcc.id || a.name === cAcc.name)) {
-                report += `  - REMOVED: ${cAcc.name} ($${cAcc.balance.toLocaleString()})\n`;
+                html += `<div class="comparison-item removed">
+                    <div class="comparison-item-header">
+                        <span class="comparison-item-icon">−</span>
+                        <span class="comparison-item-name">${this.escapeHtml(cAcc.name)}</span>
+                    </div>
+                    <div class="comparison-item-details">
+                        <div>Balance: $${cAcc.balance.toLocaleString()}</div>
+                    </div>
+                </div>`;
             }
         });
+        html += `</div></div>`;
 
-        // Compare income
-        report += `\n───────────────────────────────────────────────────────\n`;
-        report += `INCOME\n`;
-        report += `───────────────────────────────────────────────────────\n`;
+        // INCOME SECTION
+        html += `<div class="comparison-section">
+            <div class="comparison-section-header">
+                <span class="comparison-section-icon">💵</span>
+                <h3>Income</h3>
+            </div>`;
+
         const currentIncomes = this.model.incomes;
         const scenarioIncomes = scenario.data.incomes || [];
-
         const currentIncomeTotal = currentIncomes.reduce((sum, i) => sum + i.amount * (i.frequency === 'monthly' ? 12 : 1), 0);
         const scenarioIncomeTotal = scenarioIncomes.reduce((sum, i) => sum + i.amount * (i.frequency === 'monthly' ? 12 : 1), 0);
+        const incomeDiff = scenarioIncomeTotal - currentIncomeTotal;
 
-        report += `Current Annual: $${currentIncomeTotal.toLocaleString()}\n`;
-        report += `Scenario Annual: $${scenarioIncomeTotal.toLocaleString()}\n`;
-        report += `Difference: $${(scenarioIncomeTotal - currentIncomeTotal).toLocaleString()}\n\n`;
+        html += `<div class="comparison-summary">
+            <div class="comparison-summary-item">
+                <div class="comparison-summary-label">Current Annual</div>
+                <div class="comparison-summary-value">$${currentIncomeTotal.toLocaleString()}</div>
+            </div>
+            <div class="comparison-summary-item">
+                <div class="comparison-summary-label">Scenario Annual</div>
+                <div class="comparison-summary-value">$${scenarioIncomeTotal.toLocaleString()}</div>
+            </div>
+            <div class="comparison-summary-item">
+                <div class="comparison-summary-label">Difference</div>
+                <div class="comparison-summary-value ${incomeDiff > 0 ? 'positive' : incomeDiff < 0 ? 'negative' : ''}">
+                    ${incomeDiff >= 0 ? '+' : ''}$${incomeDiff.toLocaleString()}
+                </div>
+            </div>
+        </div>`;
 
+        html += `<div class="comparison-items">`;
         scenarioIncomes.forEach(sInc => {
             const cInc = currentIncomes.find(i => i.id === sInc.id || i.name === sInc.name);
+            const sAnnual = sInc.amount * (sInc.frequency === 'monthly' ? 12 : 1);
             if (!cInc) {
-                report += `  + NEW: ${sInc.name} ($${(sInc.amount * (sInc.frequency === 'monthly' ? 12 : 1)).toLocaleString()}/yr)\n`;
+                html += `<div class="comparison-item added">
+                    <div class="comparison-item-header">
+                        <span class="comparison-item-icon">+</span>
+                        <span class="comparison-item-name">${this.escapeHtml(sInc.name)}</span>
+                    </div>
+                    <div class="comparison-item-details">
+                        <div>Amount: $${sAnnual.toLocaleString()}/year</div>
+                    </div>
+                </div>`;
             } else if (cInc.amount !== sInc.amount || cInc.endYear !== sInc.endYear || cInc.growth !== sInc.growth) {
-                report += `  ≠ CHANGED: ${sInc.name}\n`;
-                if (cInc.amount !== sInc.amount) report += `      Amount: $${cInc.amount.toLocaleString()} → $${sInc.amount.toLocaleString()} (${cInc.frequency})\n`;
-                if (cInc.endYear !== sInc.endYear) report += `      End Year: ${cInc.endYear || 'none'} → ${sInc.endYear || 'none'}\n`;
-                if (cInc.growth !== sInc.growth) report += `      Growth: ${cInc.growth}% → ${sInc.growth}%\n`;
+                html += `<div class="comparison-item changed">
+                    <div class="comparison-item-header">
+                        <span class="comparison-item-icon">≠</span>
+                        <span class="comparison-item-name">${this.escapeHtml(sInc.name)}</span>
+                    </div>
+                    <div class="comparison-item-details">`;
+                if (cInc.amount !== sInc.amount) {
+                    html += `<div>Amount: $${cInc.amount.toLocaleString()} <span class="comparison-arrow">→</span> $${sInc.amount.toLocaleString()} (${sInc.frequency})</div>`;
+                }
+                if (cInc.endYear !== sInc.endYear) {
+                    html += `<div>End Year: ${cInc.endYear || 'none'} <span class="comparison-arrow">→</span> ${sInc.endYear || 'none'}</div>`;
+                }
+                if (cInc.growth !== sInc.growth) {
+                    html += `<div>Growth: ${cInc.growth}% <span class="comparison-arrow">→</span> ${sInc.growth}%</div>`;
+                }
+                html += `</div></div>`;
             }
         });
+        html += `</div></div>`;
 
-        // Compare expenses
-        report += `\n───────────────────────────────────────────────────────\n`;
-        report += `EXPENSES\n`;
-        report += `───────────────────────────────────────────────────────\n`;
+        // EXPENSES SECTION
+        html += `<div class="comparison-section">
+            <div class="comparison-section-header">
+                <span class="comparison-section-icon">💳</span>
+                <h3>Expenses</h3>
+            </div>`;
+
         const currentExpenses = this.model.expenses;
         const scenarioExpenses = scenario.data.expenses || [];
-
         const currentExpenseTotal = currentExpenses.reduce((sum, e) => sum + e.amount * (e.frequency === 'monthly' ? 12 : 1), 0);
         const scenarioExpenseTotal = scenarioExpenses.reduce((sum, e) => sum + e.amount * (e.frequency === 'monthly' ? 12 : 1), 0);
+        const expenseDiff = scenarioExpenseTotal - currentExpenseTotal;
 
-        report += `Current Annual: $${currentExpenseTotal.toLocaleString()}\n`;
-        report += `Scenario Annual: $${scenarioExpenseTotal.toLocaleString()}\n`;
-        report += `Difference: $${(scenarioExpenseTotal - currentExpenseTotal).toLocaleString()}\n\n`;
+        html += `<div class="comparison-summary">
+            <div class="comparison-summary-item">
+                <div class="comparison-summary-label">Current Annual</div>
+                <div class="comparison-summary-value">$${currentExpenseTotal.toLocaleString()}</div>
+            </div>
+            <div class="comparison-summary-item">
+                <div class="comparison-summary-label">Scenario Annual</div>
+                <div class="comparison-summary-value">$${scenarioExpenseTotal.toLocaleString()}</div>
+            </div>
+            <div class="comparison-summary-item">
+                <div class="comparison-summary-label">Difference</div>
+                <div class="comparison-summary-value ${expenseDiff > 0 ? 'negative' : expenseDiff < 0 ? 'positive' : ''}">
+                    ${expenseDiff >= 0 ? '+' : ''}$${expenseDiff.toLocaleString()}
+                </div>
+            </div>
+        </div>`;
 
+        html += `<div class="comparison-items">`;
         scenarioExpenses.forEach(sExp => {
             const cExp = currentExpenses.find(e => e.id === sExp.id || e.name === sExp.name);
+            const sAnnual = sExp.amount * (sExp.frequency === 'monthly' ? 12 : 1);
             if (!cExp) {
-                report += `  + NEW: ${sExp.name} ($${(sExp.amount * (sExp.frequency === 'monthly' ? 12 : 1)).toLocaleString()}/yr)\n`;
+                html += `<div class="comparison-item added">
+                    <div class="comparison-item-header">
+                        <span class="comparison-item-icon">+</span>
+                        <span class="comparison-item-name">${this.escapeHtml(sExp.name)}</span>
+                    </div>
+                    <div class="comparison-item-details">
+                        <div>Amount: $${sAnnual.toLocaleString()}/year</div>
+                    </div>
+                </div>`;
             } else if (cExp.amount !== sExp.amount || cExp.growth !== sExp.growth) {
-                report += `  ≠ CHANGED: ${sExp.name}\n`;
-                if (cExp.amount !== sExp.amount) report += `      Amount: $${cExp.amount.toLocaleString()} → $${sExp.amount.toLocaleString()} (${cExp.frequency})\n`;
-                if (cExp.growth !== sExp.growth) report += `      Growth: ${cExp.growth}% → ${sExp.growth}%\n`;
+                html += `<div class="comparison-item changed">
+                    <div class="comparison-item-header">
+                        <span class="comparison-item-icon">≠</span>
+                        <span class="comparison-item-name">${this.escapeHtml(sExp.name)}</span>
+                    </div>
+                    <div class="comparison-item-details">`;
+                if (cExp.amount !== sExp.amount) {
+                    html += `<div>Amount: $${cExp.amount.toLocaleString()} <span class="comparison-arrow">→</span> $${sExp.amount.toLocaleString()} (${sExp.frequency})</div>`;
+                }
+                if (cExp.growth !== sExp.growth) {
+                    html += `<div>Growth: ${cExp.growth}% <span class="comparison-arrow">→</span> ${sExp.growth}%</div>`;
+                }
+                html += `</div></div>`;
             }
         });
+        html += `</div></div>`;
 
-        // Compare settings
-        report += `\n───────────────────────────────────────────────────────\n`;
-        report += `SETTINGS\n`;
-        report += `───────────────────────────────────────────────────────\n`;
+        // MILESTONES SECTION (THIS WAS MISSING!)
+        const currentMilestones = this.model.milestones || [];
+        const scenarioMilestones = scenario.data.milestones || [];
+
+        if (currentMilestones.length > 0 || scenarioMilestones.length > 0) {
+            html += `<div class="comparison-section">
+                <div class="comparison-section-header">
+                    <span class="comparison-section-icon">🎯</span>
+                    <h3>Milestones</h3>
+                </div>`;
+
+            html += `<div class="comparison-items">`;
+            scenarioMilestones.forEach(sMile => {
+                const cMile = currentMilestones.find(m => m.id === sMile.id || m.name === sMile.name);
+                if (!cMile) {
+                    html += `<div class="comparison-item added">
+                        <div class="comparison-item-header">
+                            <span class="comparison-item-icon">+</span>
+                            <span class="comparison-item-name">${this.escapeHtml(sMile.name)}</span>
+                        </div>
+                        <div class="comparison-item-details">
+                            <div>Year: ${sMile.year}</div>
+                            <div>Amount: $${sMile.cost.toLocaleString()} ${sMile.isPositive ? '(Windfall)' : '(Cost)'}</div>
+                            ${sMile.recurring ? `<div>Recurring: Every ${sMile.recurringInterval} years</div>` : ''}
+                        </div>
+                    </div>`;
+                } else if (cMile.cost !== sMile.cost || cMile.year !== sMile.year || cMile.isPositive !== sMile.isPositive) {
+                    html += `<div class="comparison-item changed">
+                        <div class="comparison-item-header">
+                            <span class="comparison-item-icon">≠</span>
+                            <span class="comparison-item-name">${this.escapeHtml(sMile.name)}</span>
+                        </div>
+                        <div class="comparison-item-details">`;
+                    if (cMile.year !== sMile.year) {
+                        html += `<div>Year: ${cMile.year} <span class="comparison-arrow">→</span> ${sMile.year}</div>`;
+                    }
+                    if (cMile.cost !== sMile.cost) {
+                        html += `<div>Amount: $${cMile.cost.toLocaleString()} <span class="comparison-arrow">→</span> $${sMile.cost.toLocaleString()}</div>`;
+                    }
+                    if (cMile.isPositive !== sMile.isPositive) {
+                        html += `<div>Type: ${cMile.isPositive ? 'Windfall' : 'Cost'} <span class="comparison-arrow">→</span> ${sMile.isPositive ? 'Windfall' : 'Cost'}</div>`;
+                    }
+                    html += `</div></div>`;
+                }
+            });
+            currentMilestones.forEach(cMile => {
+                if (!scenarioMilestones.find(m => m.id === cMile.id || m.name === cMile.name)) {
+                    html += `<div class="comparison-item removed">
+                        <div class="comparison-item-header">
+                            <span class="comparison-item-icon">−</span>
+                            <span class="comparison-item-name">${this.escapeHtml(cMile.name)}</span>
+                        </div>
+                        <div class="comparison-item-details">
+                            <div>Year: ${cMile.year}</div>
+                            <div>Amount: $${cMile.cost.toLocaleString()}</div>
+                        </div>
+                    </div>`;
+                }
+            });
+            html += `</div></div>`;
+        }
+
+        // SETTINGS SECTION
         const cSet = this.model.settings;
         const sSet = scenario.data.settings || {};
+        let hasSettingsChanges = false;
+        let settingsHtml = '';
 
         if (cSet.inflation !== sSet.inflation) {
-            report += `  Inflation: ${cSet.inflation}% → ${sSet.inflation}%\n`;
+            hasSettingsChanges = true;
+            settingsHtml += `<div class="comparison-item changed">
+                <div class="comparison-item-header">
+                    <span class="comparison-item-icon">≠</span>
+                    <span class="comparison-item-name">Inflation Rate</span>
+                </div>
+                <div class="comparison-item-details">
+                    <div>${cSet.inflation}% <span class="comparison-arrow">→</span> ${sSet.inflation}%</div>
+                </div>
+            </div>`;
         }
+
         if (cSet.household?.personA?.retirementYear !== sSet.household?.personA?.retirementYear) {
-            report += `  ${cSet.household.personA.name} Retirement: ${cSet.household.personA.retirementYear} → ${sSet.household.personA.retirementYear}\n`;
+            hasSettingsChanges = true;
+            settingsHtml += `<div class="comparison-item changed">
+                <div class="comparison-item-header">
+                    <span class="comparison-item-icon">≠</span>
+                    <span class="comparison-item-name">${this.escapeHtml(cSet.household.personA.name)} Retirement Year</span>
+                </div>
+                <div class="comparison-item-details">
+                    <div>${cSet.household.personA.retirementYear} <span class="comparison-arrow">→</span> ${sSet.household.personA.retirementYear}</div>
+                </div>
+            </div>`;
         }
-        if (cSet.household?.personA?.socialSecurity?.enabled !== sSet.household?.personA?.socialSecurity?.enabled ||
-            cSet.household?.personA?.socialSecurity?.startAge !== sSet.household?.personA?.socialSecurity?.startAge) {
-            const cSS = cSet.household.personA.socialSecurity || {};
-            const sSS = sSet.household?.personA?.socialSecurity || {};
-            report += `  ${cSet.household.personA.name} Social Security: `;
-            if (!cSS.enabled && sSS.enabled) report += `Enabled, starts age ${sSS.startAge}\n`;
-            else if (cSS.enabled && !sSS.enabled) report += `Disabled\n`;
-            else if (cSS.startAge !== sSS.startAge) report += `Start age ${cSS.startAge} → ${sSS.startAge}\n`;
+
+        const cSS = cSet.household?.personA?.socialSecurity || {};
+        const sSS = sSet.household?.personA?.socialSecurity || {};
+        if (cSS.enabled !== sSS.enabled || cSS.startAge !== sSS.startAge || cSS.annualAmount !== sSS.annualAmount) {
+            hasSettingsChanges = true;
+            settingsHtml += `<div class="comparison-item changed">
+                <div class="comparison-item-header">
+                    <span class="comparison-item-icon">≠</span>
+                    <span class="comparison-item-name">${this.escapeHtml(cSet.household.personA.name)} Social Security</span>
+                </div>
+                <div class="comparison-item-details">`;
+            if (cSS.startAge !== sSS.startAge) {
+                settingsHtml += `<div>Start Age: ${cSS.startAge} <span class="comparison-arrow">→</span> ${sSS.startAge}</div>`;
+            }
+            if (cSS.annualAmount !== sSS.annualAmount) {
+                settingsHtml += `<div>Annual Amount: $${(cSS.annualAmount || 0).toLocaleString()} <span class="comparison-arrow">→</span> $${(sSS.annualAmount || 0).toLocaleString()}</div>`;
+            }
+            settingsHtml += `</div></div>`;
         }
+
         if (cSet.household?.personB) {
             if (cSet.household.personB.retirementYear !== sSet.household?.personB?.retirementYear) {
-                report += `  ${cSet.household.personB.name} Retirement: ${cSet.household.personB.retirementYear} → ${sSet.household?.personB?.retirementYear}\n`;
+                hasSettingsChanges = true;
+                settingsHtml += `<div class="comparison-item changed">
+                    <div class="comparison-item-header">
+                        <span class="comparison-item-icon">≠</span>
+                        <span class="comparison-item-name">${this.escapeHtml(cSet.household.personB.name)} Retirement Year</span>
+                    </div>
+                    <div class="comparison-item-details">
+                        <div>${cSet.household.personB.retirementYear} <span class="comparison-arrow">→</span> ${sSet.household.personB.retirementYear}</div>
+                    </div>
+                </div>`;
             }
-            if (cSet.household.personB.socialSecurity?.enabled !== sSet.household?.personB?.socialSecurity?.enabled ||
-                cSet.household.personB.socialSecurity?.startAge !== sSet.household?.personB?.socialSecurity?.startAge) {
-                const cSS = cSet.household.personB.socialSecurity || {};
-                const sSS = sSet.household?.personB?.socialSecurity || {};
-                report += `  ${cSet.household.personB.name} Social Security: `;
-                if (!cSS.enabled && sSS.enabled) report += `Enabled, starts age ${sSS.startAge}\n`;
-                else if (cSS.enabled && !sSS.enabled) report += `Disabled\n`;
-                else if (cSS.startAge !== sSS.startAge) report += `Start age ${cSS.startAge} → ${sSS.startAge}\n`;
+
+            const cSSB = cSet.household.personB.socialSecurity || {};
+            const sSSB = sSet.household?.personB?.socialSecurity || {};
+            if (cSSB.enabled !== sSSB.enabled || cSSB.startAge !== sSSB.startAge || cSSB.annualAmount !== sSSB.annualAmount) {
+                hasSettingsChanges = true;
+                settingsHtml += `<div class="comparison-item changed">
+                    <div class="comparison-item-header">
+                        <span class="comparison-item-icon">≠</span>
+                        <span class="comparison-item-name">${this.escapeHtml(cSet.household.personB.name)} Social Security</span>
+                    </div>
+                    <div class="comparison-item-details">`;
+                if (cSSB.startAge !== sSSB.startAge) {
+                    settingsHtml += `<div>Start Age: ${cSSB.startAge} <span class="comparison-arrow">→</span> ${sSSB.startAge}</div>`;
+                }
+                if (cSSB.annualAmount !== sSSB.annualAmount) {
+                    settingsHtml += `<div>Annual Amount: $${(cSSB.annualAmount || 0).toLocaleString()} <span class="comparison-arrow">→</span> $${(sSSB.annualAmount || 0).toLocaleString()}</div>`;
+                }
+                settingsHtml += `</div></div>`;
             }
         }
 
-        // Compare withdrawal strategy
-        report += `\n───────────────────────────────────────────────────────\n`;
-        report += `WITHDRAWAL STRATEGY\n`;
-        report += `───────────────────────────────────────────────────────\n`;
+        if (hasSettingsChanges) {
+            html += `<div class="comparison-section">
+                <div class="comparison-section-header">
+                    <span class="comparison-section-icon">⚙️</span>
+                    <h3>Settings</h3>
+                </div>
+                <div class="comparison-items">
+                    ${settingsHtml}
+                </div>
+            </div>`;
+        }
+
+        // WITHDRAWAL STRATEGY SECTION
         const cWithdraw = this.model.withdrawalStrategy;
         const sWithdraw = scenario.data.withdrawalStrategy || {};
+        let hasWithdrawalChanges = false;
+        let withdrawalHtml = '';
 
         if (cWithdraw.type !== sWithdraw.type) {
-            report += `  Type: ${cWithdraw.type} → ${sWithdraw.type}\n`;
-        }
-        if (cWithdraw.withdrawalPercentage !== sWithdraw.withdrawalPercentage) {
-            report += `  Percentage: ${cWithdraw.withdrawalPercentage}% → ${sWithdraw.withdrawalPercentage}%\n`;
-        }
-        if (cWithdraw.withdrawalStartYear !== sWithdraw.withdrawalStartYear) {
-            report += `  Start Year: ${cWithdraw.withdrawalStartYear} → ${sWithdraw.withdrawalStartYear}\n`;
+            hasWithdrawalChanges = true;
+            withdrawalHtml += `<div class="comparison-item changed">
+                <div class="comparison-item-header">
+                    <span class="comparison-item-icon">≠</span>
+                    <span class="comparison-item-name">Strategy Type</span>
+                </div>
+                <div class="comparison-item-details">
+                    <div>${cWithdraw.type} <span class="comparison-arrow">→</span> ${sWithdraw.type}</div>
+                </div>
+            </div>`;
         }
 
-        // Compare investment glide path
-        report += `\n───────────────────────────────────────────────────────\n`;
-        report += `INVESTMENT GLIDE PATH\n`;
-        report += `───────────────────────────────────────────────────────\n`;
+        if (cWithdraw.withdrawalPercentage !== sWithdraw.withdrawalPercentage) {
+            hasWithdrawalChanges = true;
+            withdrawalHtml += `<div class="comparison-item changed">
+                <div class="comparison-item-header">
+                    <span class="comparison-item-icon">≠</span>
+                    <span class="comparison-item-name">Withdrawal Percentage</span>
+                </div>
+                <div class="comparison-item-details">
+                    <div>${cWithdraw.withdrawalPercentage}% <span class="comparison-arrow">→</span> ${sWithdraw.withdrawalPercentage}%</div>
+                </div>
+            </div>`;
+        }
+
+        if (hasWithdrawalChanges) {
+            html += `<div class="comparison-section">
+                <div class="comparison-section-header">
+                    <span class="comparison-section-icon">💸</span>
+                    <h3>Withdrawal Strategy</h3>
+                </div>
+                <div class="comparison-items">
+                    ${withdrawalHtml}
+                </div>
+            </div>`;
+        }
+
+        // INVESTMENT GLIDE PATH SECTION
         const cGlide = this.model.investmentGlidePath || [];
         const sGlide = scenario.data.investmentGlidePath || [];
+        let hasGlideChanges = false;
+        let glideHtml = '';
 
         cGlide.forEach((cPeriod, idx) => {
             const sPeriod = sGlide[idx];
             if (sPeriod && (cPeriod.expectedReturn !== sPeriod.expectedReturn || cPeriod.volatility !== sPeriod.volatility)) {
-                report += `  Period ${idx + 1} (${cPeriod.startYear}+):\n`;
+                hasGlideChanges = true;
+                glideHtml += `<div class="comparison-item changed">
+                    <div class="comparison-item-header">
+                        <span class="comparison-item-icon">≠</span>
+                        <span class="comparison-item-name">Period ${idx + 1} (${cPeriod.startYear}+)</span>
+                    </div>
+                    <div class="comparison-item-details">`;
                 if (cPeriod.expectedReturn !== sPeriod.expectedReturn) {
-                    report += `    Return: ${cPeriod.expectedReturn}% → ${sPeriod.expectedReturn}%\n`;
+                    glideHtml += `<div>Return: ${cPeriod.expectedReturn}% <span class="comparison-arrow">→</span> ${sPeriod.expectedReturn}%</div>`;
                 }
                 if (cPeriod.volatility !== sPeriod.volatility) {
-                    report += `    Volatility: ${cPeriod.volatility}% → ${sPeriod.volatility}%\n`;
+                    glideHtml += `<div>Volatility: ${cPeriod.volatility}% <span class="comparison-arrow">→</span> ${sPeriod.volatility}%</div>`;
                 }
+                glideHtml += `</div></div>`;
             }
         });
 
-        report += `\n═══════════════════════════════════════════════════════\n`;
-        report += `To load this scenario, click the "Load" button.\n`;
-        report += `WARNING: Loading will replace ALL current data!\n`;
-        report += `═══════════════════════════════════════════════════════\n`;
+        if (hasGlideChanges) {
+            html += `<div class="comparison-section">
+                <div class="comparison-section-header">
+                    <span class="comparison-section-icon">📊</span>
+                    <h3>Investment Glide Path</h3>
+                </div>
+                <div class="comparison-items">
+                    ${glideHtml}
+                </div>
+            </div>`;
+        }
 
-        // Display in a modal-style alert with monospace font
-        console.log(report);
-        alert(report);
+        // Display modal
+        document.getElementById('comparisonModalTitle').textContent = `Scenario: ${scenario.name}`;
+        document.getElementById('comparisonModalBody').innerHTML = html;
+        document.getElementById('comparisonModal').style.display = 'flex';
+
+        // Set up Load button handler
+        document.getElementById('comparisonLoadBtn').onclick = () => {
+            document.getElementById('comparisonModal').style.display = 'none';
+            this.loadScenario(window.currentComparisonScenarioId);
+        };
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     loadScenario(scenarioId) {

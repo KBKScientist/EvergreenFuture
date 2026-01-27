@@ -743,6 +743,23 @@
         </main>
     </div>
 
+    <!-- Scenario Comparison Modal -->
+    <div id="comparisonModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h2 id="comparisonModalTitle">Scenario Comparison</h2>
+                <button class="modal-close" onclick="document.getElementById('comparisonModal').style.display='none'">&times;</button>
+            </div>
+            <div id="comparisonModalBody" class="modal-body">
+                <!-- Comparison content will be inserted here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="document.getElementById('comparisonModal').style.display='none'">Close</button>
+                <button id="comparisonLoadBtn" class="btn btn-primary">Load This Scenario</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>
