@@ -6476,7 +6476,7 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' â†
             },
 
             "_executive_summary": {
-                "about_this_plan": `This is a comprehensive ${this.model.settings.projectionHorizon}-year financial projection for ${this.model.settings.household.personB ? 'a couple' : 'an individual'} with ${this.model.accounts.length} investment/savings accounts totaling ${this.formatCurrency(totalAssets)}. The plan projects income, expenses, taxes, investment returns, and account balances through ${this.model.settings.planStartYear + this.model.settings.projectionHorizon}.`,
+                "about_this_plan": `This is a comprehensive ${this.model.settings.projectionHorizon}-year financial projection for ${this.model.settings.household.personB ? 'a couple' : 'an individual'} with ${this.model.accounts.length} investment/savings accounts totaling $${totalAssets.toLocaleString()}. The plan projects income, expenses, taxes, investment returns, and account balances through ${this.model.settings.planStartYear + this.model.settings.projectionHorizon}.`,
 
                 "key_facts": {
                     "current_net_worth": totalAssets,
