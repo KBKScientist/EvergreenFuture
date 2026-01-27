@@ -4,7 +4,7 @@
 
 **🎯 Built for people who understand financial planning but need a powerful tool to model their future.**
 
-**🌲 Plan your financial future, naturally**
+**🌲 Plan your financial future**
 
 ---
 
@@ -94,8 +94,16 @@ Projections are estimates. Actual results will vary. Consult qualified financial
 
 **No tracking. No data collection. Your privacy is protected.**
 
+### 💚 Support This Project
+
+If Evergreen Future helps you plan your financial future and you'd like to support continued development, consider sending a dollar or two:
+
+**Venmo:** [@thatguykbk](https://venmo.com/thatguykbk)
+
+Every contribution helps keep this tool free, open-source, and privacy-focused. Thank you! 🌲
+
 ---
 
 *Built with 💚 for the financial independence community*
 
-*Plan your financial future, naturally* 🌲
+*Plan your financial future* 🌲

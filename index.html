@@ -14,7 +14,7 @@
         <header>
             <div>
                 <h1>🌲 Evergreen Future</h1>
-                <p style="margin: 0; font-size: 14px; color: var(--text-secondary); font-weight: 500;">Plan your financial future, naturally</p>
+                <p style="margin: 0; font-size: 14px; color: var(--text-secondary); font-weight: 500;">Plan your financial future</p>
             </div>
             <div class="header-actions">
                 <button id="aiExportBtn" class="btn btn-primary" title="Export plan with AI analysis instructions">🤖 AI Review</button>
@@ -57,30 +57,33 @@
             <!-- Dashboard Tab -->
             <div id="dashboard" class="tab-content active">
                 <div class="dashboard-grid">
-                    <div class="card">
-                        <h2>Net Worth Projection</h2>
-                        <canvas id="netWorthChart"></canvas>
+                    <!-- Left Column: Charts -->
+                    <div style="grid-column: 1; display: flex; flex-direction: column; gap: 20px;">
+                        <div class="card">
+                            <h2>Net Worth Projection</h2>
+                            <canvas id="netWorthChart"></canvas>
+                        </div>
+                        <div class="card">
+                            <h2>Account Balances Over Time</h2>
+                            <div style="height: 400px;">
+                                <canvas id="accountBalancesChart"></canvas>
+                            </div>
+                            <div style="margin-top: 10px; font-size: 13px; color: var(--text-secondary);">
+                                <strong>📊 Tax Optimization in Action:</strong>
+                                Normally, taxable accounts (green) are withdrawn first, then Traditional IRA/401k (yellow), then Roth (blue).
+                                But in tax bomb years (e.g., student loan forgiveness), the system switches to Roth first to avoid stacking
+                                taxable income - watch for changes in the curve slopes during those years!
+                            </div>
+                        </div>
                     </div>
-                    <div class="card">
+
+                    <!-- Right Column: Summary -->
+                    <div class="card" style="grid-column: 2;">
                         <h2>Current Summary</h2>
                         <div id="summaryStats"></div>
                     </div>
-                    <div class="card full-width">
-                        <h2>Account Balances Over Time</h2>
-                        <div style="height: 400px;">
-                            <canvas id="accountBalancesChart"></canvas>
-                        </div>
-                        <div style="margin-top: 10px; font-size: 13px; color: var(--text-secondary);">
-                            <strong>📊 Tax Optimization in Action:</strong>
-                            Normally, taxable accounts (green) are withdrawn first, then Traditional IRA/401k (yellow), then Roth (blue).
-                            But in tax bomb years (e.g., student loan forgiveness), the system switches to Roth first to avoid stacking
-                            taxable income - watch for changes in the curve slopes during those years!
-                        </div>
-                    </div>
-                    <div class="card">
-                        <h2>Annual Cash Flow Breakdown</h2>
-                        <div id="cashFlowBreakdown"></div>
-                    </div>
+
+                    <!-- Full Width: Sankey Diagrams -->
                     <div class="card full-width">
                         <h2>Current Cash Flow (Sankey Diagram)</h2>
                         <div id="sankeyChart"></div>
@@ -100,6 +103,12 @@
                             • <strong>Investment Returns:</strong> Not shown here because they stay invested (see Annual Cash Flow Breakdown for full picture)<br>
                             • <strong>Current Limitation:</strong> Model pools all accounts together - doesn't distinguish between taxable/Traditional IRA/Roth IRA withdrawals
                         </div>
+                    </div>
+
+                    <!-- Full Width: Cash Flow Breakdown -->
+                    <div class="card full-width">
+                        <h2>Annual Cash Flow Breakdown</h2>
+                        <div id="cashFlowBreakdown"></div>
                     </div>
                 </div>
             </div>

@@ -1,29 +1,29 @@
 :root {
-    /* Evergreen Future - Green primary with blue accents */
-    --primary-color: #10b981; /* Emerald green */
-    --primary-hover: #059669;
-    --primary-light: #d1fae5;
-    --secondary-color: #14b8a6; /* Teal */
-    --secondary-hover: #0d9488;
-    --accent-color: #06b6d4; /* Cyan blue */
-    --success: #10b981; /* Match primary */
-    --success-color: #10b981;
-    --success-light: #d1fae5;
-    --warning-color: #f59e0b;
-    --warning-light: #fef3c7;
-    --danger-color: #ef4444;
-    --danger-light: #fee2e2;
-    --bg-color: #f0fdf4; /* Very light green tint */
-    --bg-gradient: linear-gradient(135deg, #10b981 0%, #059669 50%, #0d9488 100%); /* Green gradient */
+    /* Evergreen Future - Washed out forest green with subtle blue accents */
+    --primary-color: #6b9080; /* Washed out forest green */
+    --primary-hover: #588273;
+    --primary-light: #d4e4dd;
+    --secondary-color: #4a7c70; /* Deeper forest green */
+    --secondary-hover: #3d665c;
+    --accent-color: #7ba8a1; /* Muted teal-blue */
+    --success: #6b9080; /* Match primary */
+    --success-color: #6b9080;
+    --success-light: #d4e4dd;
+    --warning-color: #d4a574;
+    --warning-light: #f5e8d9;
+    --danger-color: #c97b7b;
+    --danger-light: #f0d9d9;
+    --bg-color: #f7f9f8; /* Very subtle green-gray tint */
+    --bg-gradient: linear-gradient(135deg, #6b9080 0%, #588273 50%, #4a7c70 100%); /* Forest green gradient */
     --card-bg: #ffffff;
-    --card-hover: #f9fafb;
-    --text-primary: #064e3b; /* Dark green */
-    --text-secondary: #047857; /* Medium green */
-    --border-color: #d1fae5;
-    --shadow-sm: 0 1px 2px 0 rgba(16, 185, 129, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(16, 185, 129, 0.1), 0 2px 4px -1px rgba(16, 185, 129, 0.06);
-    --shadow-lg: 0 10px 15px -3px rgba(16, 185, 129, 0.1), 0 4px 6px -2px rgba(16, 185, 129, 0.05);
-    --shadow-xl: 0 20px 25px -5px rgba(16, 185, 129, 0.1), 0 10px 10px -5px rgba(16, 185, 129, 0.04);
+    --card-hover: #fafbfa;
+    --text-primary: #2d4a3e; /* Dark forest green */
+    --text-secondary: #4a7c70; /* Medium forest green */
+    --border-color: #d4e4dd;
+    --shadow-sm: 0 1px 2px 0 rgba(107, 144, 128, 0.08);
+    --shadow-md: 0 4px 6px -1px rgba(107, 144, 128, 0.12), 0 2px 4px -1px rgba(107, 144, 128, 0.08);
+    --shadow-lg: 0 10px 15px -3px rgba(107, 144, 128, 0.12), 0 4px 6px -2px rgba(107, 144, 128, 0.08);
+    --shadow-xl: 0 20px 25px -5px rgba(107, 144, 128, 0.12), 0 10px 10px -5px rgba(107, 144, 128, 0.08);
 }
 
 * {
