@@ -7526,20 +7526,82 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
     }
 
     compareScenario(scenarioId) {
-        const scenario = this.model.scenarios.find(s => s.id === scenarioId);
-        if (!scenario) return;
+        const compareToScenario = this.model.scenarios.find(s => s.id === scenarioId);
+        if (!compareToScenario) return;
 
-        // Store scenario ID for the Load button in modal
+        // Get the currently viewed scenario data (or base plan if currentScenarioId is null)
+        let currentData;
+        let currentLabel;
+
+        if (this.currentScenarioId) {
+            const currentScenario = this.model.scenarios.find(s => s.id === this.currentScenarioId);
+            if (!currentScenario) return;
+            currentData = currentScenario.data;
+            currentLabel = currentScenario.name;
+        } else {
+            // Viewing base plan
+            currentData = {
+                accounts: this.model.accounts,
+                incomes: this.model.incomes,
+                expenses: this.model.expenses,
+                milestones: this.model.milestones,
+                settings: this.model.settings
+            };
+            currentLabel = "Base Plan";
+        }
+
+        // Store scenario ID for potential future use
         window.currentComparisonScenarioId = scenarioId;
 
         let html = '';
 
-        // Description at the top
-        if (scenario.description) {
+        // Add header showing what's being compared
+        html += `<div style="background: var(--primary-light); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 5px;">Comparing:</div>
+            <div style="font-size: 16px; font-weight: 600; color: var(--text-primary);">
+                <span style="color: var(--primary-color);">${this.escapeHtml(currentLabel)}</span>
+                <span style="margin: 0 10px;">vs</span>
+                <span style="color: var(--secondary-color);">${this.escapeHtml(compareToScenario.name)}</span>
+            </div>
+        </div>`;
+
+        // Description
+        if (compareToScenario.description) {
             html += `<div class="comparison-description">
-                <p>${this.escapeHtml(scenario.description)}</p>
+                <p><strong>${this.escapeHtml(compareToScenario.name)}:</strong> ${this.escapeHtml(compareToScenario.description)}</p>
             </div>`;
         }
+
+        // LIQUID NET WORTH COMPARISON at 10-year intervals
+        html += `<div class="comparison-section">
+            <div class="comparison-section-header">
+                <span class="comparison-section-icon">📊</span>
+                <h3>Liquid Net Worth Differences</h3>
+            </div>`;
+
+        // Generate projections for both
+        const currentEngine = new ProjectionEngine(currentData);
+        const compareEngine = new ProjectionEngine(compareToScenario.data);
+        const currentProj = currentEngine.projectNetWorth(40);
+        const compareProj = compareEngine.projectNetWorth(40);
+
+        html += `<div class="comparison-summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">`;
+
+        for (let i = 10; i <= 40; i += 10) {
+            const yearIndex = Math.min(i, currentProj.length - 1);
+            const currentLiquid = currentProj[yearIndex].endBalance - (currentProj[yearIndex].debtBalance || 0);
+            const compareLiquid = compareProj[yearIndex].endBalance - (compareProj[yearIndex].debtBalance || 0);
+            const diff = compareLiquid - currentLiquid;
+
+            html += `<div class="comparison-summary-item">
+                <div class="comparison-summary-label">Year ${i}</div>
+                <div class="comparison-summary-value ${diff > 0 ? 'positive' : diff < 0 ? 'negative' : ''}">
+                    ${diff >= 0 ? '+' : ''}$${diff.toLocaleString()}
+                </div>
+            </div>`;
+        }
+
+        html += `</div></div>`;
 
         // ACCOUNTS SECTION
         html += `<div class="comparison-section">
@@ -7548,8 +7610,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
                 <h3>Accounts</h3>
             </div>`;
 
-        const currentAccounts = this.model.accounts;
-        const scenarioAccounts = scenario.data.accounts || [];
+        const currentAccounts = currentData.accounts || [];
+        const scenarioAccounts = compareToScenario.data.accounts || [];
         const currentTotal = currentAccounts.reduce((sum, a) => sum + a.balance, 0);
         const scenarioTotal = scenarioAccounts.reduce((sum, a) => sum + a.balance, 0);
         const diff = scenarioTotal - currentTotal;
@@ -7623,8 +7685,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
                 <h3>Income</h3>
             </div>`;
 
-        const currentIncomes = this.model.incomes;
-        const scenarioIncomes = scenario.data.incomes || [];
+        const currentIncomes = currentData.incomes || [];
+        const scenarioIncomes = compareToScenario.data.incomes || [];
         const currentIncomeTotal = currentIncomes.reduce((sum, i) => sum + i.amount * (i.frequency === 'monthly' ? 12 : 1), 0);
         const scenarioIncomeTotal = scenarioIncomes.reduce((sum, i) => sum + i.amount * (i.frequency === 'monthly' ? 12 : 1), 0);
         const incomeDiff = scenarioIncomeTotal - currentIncomeTotal;
@@ -7688,8 +7750,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
                 <h3>Expenses</h3>
             </div>`;
 
-        const currentExpenses = this.model.expenses;
-        const scenarioExpenses = scenario.data.expenses || [];
+        const currentExpenses = currentData.expenses || [];
+        const scenarioExpenses = compareToScenario.data.expenses || [];
         const currentExpenseTotal = currentExpenses.reduce((sum, e) => sum + e.amount * (e.frequency === 'monthly' ? 12 : 1), 0);
         const scenarioExpenseTotal = scenarioExpenses.reduce((sum, e) => sum + e.amount * (e.frequency === 'monthly' ? 12 : 1), 0);
         const expenseDiff = scenarioExpenseTotal - currentExpenseTotal;
@@ -7744,8 +7806,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         html += `</div></div>`;
 
         // MILESTONES SECTION (THIS WAS MISSING!)
-        const currentMilestones = this.model.milestones || [];
-        const scenarioMilestones = scenario.data.milestones || [];
+        const currentMilestones = currentData.milestones || [];
+        const scenarioMilestones = compareToScenario.data.milestones || [];
 
         if (currentMilestones.length > 0 || scenarioMilestones.length > 0) {
             html += `<div class="comparison-section">
@@ -8076,21 +8138,7 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
             return;
         }
 
-        // Add base plan as first "scenario"
-        const isViewingBase = this.currentScenarioId === null;
-        const baseBadge = isViewingBase ? '<span style="background: var(--success); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 8px; font-weight: 600;">CURRENT</span>' : '';
-        const baseHighlight = isViewingBase ? 'border: 2px solid var(--success); background: rgba(107, 144, 128, 0.05);' : '';
-
         container.innerHTML = '<div class="item-list">' +
-            `<div class="list-item" style="${baseHighlight}">
-                <div class="list-item-info">
-                    <h3>📁 Base Plan${baseBadge}</h3>
-                    <p>Your current working plan</p>
-                </div>
-                <div class="list-item-actions">
-                    <button class="btn btn-primary" onclick="ui.viewBasePlan()" ${isViewingBase ? 'disabled' : ''}>View</button>
-                </div>
-            </div>` +
             this.model.scenarios.map(scenario => {
                 const date = new Date(scenario.date).toLocaleDateString();
                 const isCurrent = this.currentScenarioId === scenario.id;
