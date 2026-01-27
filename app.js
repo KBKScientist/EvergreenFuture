@@ -7868,8 +7868,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         }
 
         // SETTINGS SECTION
-        const cSet = this.model.settings;
-        const sSet = scenario.data.settings || {};
+        const cSet = currentData.settings || this.model.settings;
+        const sSet = compareToScenario.data.settings || {};
         let hasSettingsChanges = false;
         let settingsHtml = '';
 
@@ -7965,8 +7965,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         }
 
         // WITHDRAWAL STRATEGY SECTION
-        const cWithdraw = this.model.withdrawalStrategy;
-        const sWithdraw = scenario.data.withdrawalStrategy || {};
+        const cWithdraw = currentData.withdrawalStrategy || this.model.withdrawalStrategy;
+        const sWithdraw = compareToScenario.data.withdrawalStrategy || {};
         let hasWithdrawalChanges = false;
         let withdrawalHtml = '';
 
@@ -8009,8 +8009,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         }
 
         // INVESTMENT GLIDE PATH SECTION
-        const cGlide = this.model.investmentGlidePath || [];
-        const sGlide = scenario.data.investmentGlidePath || [];
+        const cGlide = currentData.investmentGlidePath || this.model.investmentGlidePath || [];
+        const sGlide = compareToScenario.data.investmentGlidePath || [];
         let hasGlideChanges = false;
         let glideHtml = '';
 
@@ -8047,7 +8047,7 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         }
 
         // Display modal
-        document.getElementById('comparisonModalTitle').textContent = `Scenario: ${scenario.name}`;
+        document.getElementById('comparisonModalTitle').textContent = `Comparing: ${currentLabel} vs ${compareToScenario.name}`;
         document.getElementById('comparisonModalBody').innerHTML = html;
         document.getElementById('comparisonModal').style.display = 'flex';
 
