@@ -7151,6 +7151,8 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' �
             "_csv_export_instructions_for_ai": {
                 "purpose": "If the user asks you to export their data as CSV, or if you want to provide them with a modified/optimized version of their plan that they can import back into the tool, use these instructions to generate a properly formatted CSV file.",
 
+                "CRITICAL_DO_NOT_EXPORT_CODE": "When the user asks for CSV format, provide ONLY CSV data in the format specified below. DO NOT provide JavaScript code, JSON, or any other format. The CSV should look like the complete_csv_example section below - starting with [SETTINGS] and containing only comma-separated values.",
+
                 "important_notes": [
                     "The CSV format is section-based with [SECTION_NAME] headers",
                     "Each section has a header row with column names, followed by data rows",
@@ -7315,8 +7317,9 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
                     "3. Ensure all required sections are included in the correct order",
                     "4. Include optional sections (housing, debts, milestones) only if the user has data for them",
                     "5. Use blank values for optional fields (e.g., EndYear for ongoing expenses)",
-                    "6. Present the CSV in a code block so the user can easily copy it",
-                    "7. Instruct the user to save it as a .csv file and use the Import button in the tool"
+                    "6. CRITICAL: Present ONLY the CSV data in a plain text code block - NO explanations, NO code, NO JSON - just the CSV format shown in the example",
+                    "7. The CSV should start with [SETTINGS] and follow the exact format in complete_csv_example above",
+                    "8. Instruct the user to save it as a .csv file and use the Import button in the tool"
                 ],
 
                 "when_to_provide_csv": [
@@ -7325,6 +7328,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
                     "You suggest modifications and user wants them in importable format",
                     "User wants to create a scenario variation they can test"
                 ],
+
+                "csv_output_format": "When providing CSV to the user, output it in a plain text code block starting with ```csv and ending with ```. The content should be EXACTLY like the complete_csv_example above - it should start with [SETTINGS] on the first line, NOT with JavaScript code, NOT with JSON, and NOT with any other format.",
 
                 "user_instructions_template": "Save this as a .csv file (e.g., 'financial-plan.csv'), then in the Financial Projection Tool, click Settings → Import Data → Import CSV File and select your saved file. The tool will load all your data automatically."
             }
