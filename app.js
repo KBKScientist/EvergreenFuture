@@ -1965,6 +1965,7 @@ class UIController {
         // Scenario management
         document.getElementById('saveScenarioBtn').addEventListener('click', () => this.saveScenario());
         document.getElementById('clearScenariosBtn').addEventListener('click', () => this.clearScenarios());
+        document.getElementById('returnToBaseBtn').addEventListener('click', () => this.returnToBasePlan());
 
         // Settings
         document.getElementById('saveSettingsBtn').addEventListener('click', () => this.saveSettings());
@@ -2359,6 +2360,9 @@ class UIController {
     }
 
     updateDashboard() {
+        // Update scenario indicator
+        this.updateScenarioIndicator();
+
         const projections = this.projectionEngine.projectNetWorth(40);
 
         // Update net worth chart with breakdown
@@ -8003,6 +8007,38 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         this.updateScenariosList(); // Refresh to show current indicator
         this.switchTab('dashboard');
         alert(`✓ Loaded scenario "${scenario.name}"\n\nYou can now view Monte Carlo, Sankey, and all other tabs with this scenario's data.`);
+    }
+
+    updateScenarioIndicator() {
+        const indicator = document.getElementById('currentScenarioIndicator');
+        const nameElement = document.getElementById('currentScenarioName');
+
+        if (this.currentScenarioId) {
+            const scenario = this.model.scenarios.find(s => s.id === this.currentScenarioId);
+            if (scenario) {
+                indicator.style.display = 'flex';
+                nameElement.textContent = scenario.name;
+            } else {
+                // Scenario was deleted, clear the ID
+                this.currentScenarioId = null;
+                indicator.style.display = 'none';
+            }
+        } else {
+            indicator.style.display = 'none';
+        }
+    }
+
+    returnToBasePlan() {
+        if (this.currentScenarioId) {
+            const confirmed = confirm('Return to your base plan?\n\nThis will unload the current scenario. Make sure to save any changes as a scenario first if you want to keep them!');
+            if (!confirmed) return;
+
+            this.currentScenarioId = null;
+            this.updateScenarioIndicator();
+            this.updateScenariosList(); // Refresh scenario list to remove current indicator
+            this.updateDashboard();
+            alert('✓ Returned to base plan');
+        }
     }
 
     deleteScenario(scenarioId) {

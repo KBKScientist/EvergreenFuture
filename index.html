@@ -25,6 +25,18 @@
             </div>
         </header>
 
+        <!-- Current Scenario Indicator -->
+        <div id="currentScenarioIndicator" style="display: none; background: var(--primary-light); border: 2px solid var(--primary-color); border-radius: 8px; padding: 12px 20px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 20px;">📊</span>
+                <div>
+                    <div style="font-size: 14px; font-weight: 600; color: var(--primary-color);">Currently Viewing Scenario:</div>
+                    <div id="currentScenarioName" style="font-size: 16px; font-weight: 700; color: var(--text-primary);"></div>
+                </div>
+            </div>
+            <button id="returnToBaseBtn" class="btn btn-secondary" style="font-size: 13px;">Return to Base Plan</button>
+        </div>
+
         <nav class="tabs">
             <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
 
