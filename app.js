@@ -6032,11 +6032,8 @@ class UIController {
     }
 
     showImportOptionsModal(parsed) {
-        const modal = document.getElementById('modal');
-
-        modal.innerHTML = `
-            <div class="modal-content">
-                <h2>Import Options</h2>
+        const modal = this.createModal('Import Options', `
+            <div class="modal-body">
                 <p>How would you like to import this data?</p>
 
                 <div style="margin: 20px 0;">
@@ -6050,32 +6047,29 @@ class UIController {
                         <small>Overwrite your current plan with this data (scenarios will be preserved)</small>
                     </button>
                 </div>
-
-                <button class="btn btn-secondary" onclick="ui.closeModal()">Cancel</button>
             </div>
-        `;
+        `);
 
-        modal.style.display = 'block';
+        document.body.appendChild(modal);
 
-        document.getElementById('importAsScenarioBtn').addEventListener('click', () => {
-            this.closeModal();
-            this.showScenarioNameModal(parsed);
-        });
+        setTimeout(() => {
+            document.getElementById('importAsScenarioBtn').addEventListener('click', () => {
+                this.closeModal();
+                this.showScenarioNameModal(parsed);
+            });
 
-        document.getElementById('replaceCurrentBtn').addEventListener('click', () => {
-            this.closeModal();
-            this.loadImportedData(parsed);
-        });
+            document.getElementById('replaceCurrentBtn').addEventListener('click', () => {
+                this.closeModal();
+                this.loadImportedData(parsed);
+            });
+        }, 0);
     }
 
     showScenarioNameModal(parsed) {
-        const modal = document.getElementById('modal');
         const defaultName = `Imported Scenario ${new Date().toLocaleDateString()}`;
 
-        modal.innerHTML = `
-            <div class="modal-content">
-                <h2>Name Your Scenario</h2>
-
+        const modal = this.createModal('Name Your Scenario', `
+            <div class="modal-body">
                 <div class="form-group">
                     <label>Scenario Name</label>
                     <input type="text" id="scenarioNameInput" value="${defaultName}" placeholder="Enter scenario name">
@@ -6087,52 +6081,54 @@ class UIController {
                 </div>
 
                 <div class="modal-actions">
-                    <button class="btn btn-secondary" onclick="ui.closeModal()">Cancel</button>
                     <button class="btn btn-primary" id="createScenarioBtn">Create Scenario</button>
                 </div>
             </div>
-        `;
+        `);
 
-        modal.style.display = 'block';
+        document.body.appendChild(modal);
 
-        // Focus on name input
-        document.getElementById('scenarioNameInput').focus();
-        document.getElementById('scenarioNameInput').select();
+        setTimeout(() => {
+            // Focus on name input
+            const nameInput = document.getElementById('scenarioNameInput');
+            nameInput.focus();
+            nameInput.select();
 
-        // Handle enter key in name input
-        document.getElementById('scenarioNameInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                document.getElementById('createScenarioBtn').click();
-            }
-        });
+            // Handle enter key in name input
+            nameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    document.getElementById('createScenarioBtn').click();
+                }
+            });
 
-        document.getElementById('createScenarioBtn').addEventListener('click', () => {
-            const name = document.getElementById('scenarioNameInput').value.trim();
-            const description = document.getElementById('scenarioDescInput').value.trim();
+            document.getElementById('createScenarioBtn').addEventListener('click', () => {
+                const name = document.getElementById('scenarioNameInput').value.trim();
+                const description = document.getElementById('scenarioDescInput').value.trim();
 
-            if (!name) {
-                alert('Please enter a name for the scenario');
-                return;
-            }
+                if (!name) {
+                    alert('Please enter a name for the scenario');
+                    return;
+                }
 
-            // Create the scenario
-            const newScenario = {
-                id: Date.now(),
-                name: name,
-                description: description || 'Imported scenario',
-                date: new Date().toISOString(),
-                data: parsed
-            };
+                // Create the scenario
+                const newScenario = {
+                    id: Date.now(),
+                    name: name,
+                    description: description || 'Imported scenario',
+                    date: new Date().toISOString(),
+                    data: parsed
+                };
 
-            this.model.scenarios.push(newScenario);
-            this.saveData();
-            this.closeModal();
+                this.model.scenarios.push(newScenario);
+                this.saveData();
+                this.closeModal();
 
-            // Switch to scenarios tab
-            document.querySelector('[data-tab="scenarios"]').click();
+                // Switch to scenarios tab
+                document.querySelector('[data-tab="scenarios"]').click();
 
-            alert(`✓ Scenario "${name}" created successfully!\n\nYou can now compare it with other scenarios.`);
-        });
+                alert(`✓ Scenario "${name}" created successfully!\n\nYou can now compare it with other scenarios.`);
+            });
+        }, 0);
     }
 
     loadImportedData(parsed) {
