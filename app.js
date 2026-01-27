@@ -7585,6 +7585,11 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         const currentProj = currentEngine.projectNetWorth(40);
         const compareProj = compareEngine.projectNetWorth(40);
 
+        html += `<div style="background: var(--primary-light); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: var(--text-secondary);">
+            <strong>How to read:</strong> Positive values mean <span style="color: var(--secondary-color); font-weight: 600;">${this.escapeHtml(compareToScenario.name)}</span> has more liquid net worth.
+            Negative values mean <span style="color: var(--primary-color); font-weight: 600;">${this.escapeHtml(currentLabel)}</span> has more.
+        </div>`;
+
         html += `<div class="comparison-summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">`;
 
         for (let i = 10; i <= 40; i += 10) {
@@ -7618,11 +7623,11 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
 
         html += `<div class="comparison-summary">
             <div class="comparison-summary-item">
-                <div class="comparison-summary-label">Current Total</div>
+                <div class="comparison-summary-label">${this.escapeHtml(currentLabel)}</div>
                 <div class="comparison-summary-value">$${currentTotal.toLocaleString()}</div>
             </div>
             <div class="comparison-summary-item">
-                <div class="comparison-summary-label">Scenario Total</div>
+                <div class="comparison-summary-label">${this.escapeHtml(compareToScenario.name)}</div>
                 <div class="comparison-summary-value">$${scenarioTotal.toLocaleString()}</div>
             </div>
             <div class="comparison-summary-item">
@@ -7693,11 +7698,11 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
 
         html += `<div class="comparison-summary">
             <div class="comparison-summary-item">
-                <div class="comparison-summary-label">Current Annual</div>
+                <div class="comparison-summary-label">${this.escapeHtml(currentLabel)}</div>
                 <div class="comparison-summary-value">$${currentIncomeTotal.toLocaleString()}</div>
             </div>
             <div class="comparison-summary-item">
-                <div class="comparison-summary-label">Scenario Annual</div>
+                <div class="comparison-summary-label">${this.escapeHtml(compareToScenario.name)}</div>
                 <div class="comparison-summary-value">$${scenarioIncomeTotal.toLocaleString()}</div>
             </div>
             <div class="comparison-summary-item">
@@ -7758,11 +7763,11 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
 
         html += `<div class="comparison-summary">
             <div class="comparison-summary-item">
-                <div class="comparison-summary-label">Current Annual</div>
+                <div class="comparison-summary-label">${this.escapeHtml(currentLabel)}</div>
                 <div class="comparison-summary-value">$${currentExpenseTotal.toLocaleString()}</div>
             </div>
             <div class="comparison-summary-item">
-                <div class="comparison-summary-label">Scenario Annual</div>
+                <div class="comparison-summary-label">${this.escapeHtml(compareToScenario.name)}</div>
                 <div class="comparison-summary-value">$${scenarioExpenseTotal.toLocaleString()}</div>
             </div>
             <div class="comparison-summary-item">
