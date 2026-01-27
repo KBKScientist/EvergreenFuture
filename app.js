@@ -2376,8 +2376,16 @@ class UIController {
                     settings: scenario.data.settings,
                     investmentGlidePath: scenario.data.investmentGlidePath,
                     withdrawalStrategy: scenario.data.withdrawalStrategy,
-                    housing: scenario.data.housing || this.model.housing,
-                    debts: scenario.data.debts || this.model.debts,
+                    // Use scenario housing/debts if they exist, otherwise initialize as empty
+                    housing: scenario.data.housing || {
+                        status: 'rent',
+                        rent: { monthlyRent: 0, startYear: scenario.data.settings.planStartYear, endYear: null, annualIncrease: 3.0 },
+                        ownedProperties: []
+                    },
+                    debts: scenario.data.debts || {
+                        creditCards: [],
+                        loans: []
+                    },
                     scenarios: this.model.scenarios // Keep scenarios list
                 };
             }
@@ -2494,7 +2502,7 @@ class UIController {
 
         // Update Sankey diagram (current year using projection data)
         try {
-            this.updateSankeyDiagram(annualIncome, annualExpenses);
+            this.updateSankeyDiagram(annualIncome, annualExpenses, dataModel);
         } catch (e) {
             console.error('Error updating Sankey diagram:', e);
         }
@@ -2910,22 +2918,52 @@ class UIController {
         });
     }
 
-    updateSankeyDiagram(income, expenses) {
+    updateSankeyDiagram(income, expenses, dataModel = null) {
         // Use unified Sankey renderer for current year
-        const currentYear = this.model.settings.planStartYear;
-        this.renderSankeyForYear(currentYear, 'sankeyChart', false);
+        const model = dataModel || this.model;
+        const currentYear = model.settings.planStartYear;
+        this.renderSankeyForYear(currentYear, 'sankeyChart', false, model);
     }
 
     updateFutureSankey() {
+        // Get the current scenario's data model if viewing a scenario
+        let dataModel = this.model;
+        if (this.currentScenarioId) {
+            const scenario = this.model.scenarios.find(s => s.id === this.currentScenarioId);
+            if (scenario) {
+                dataModel = {
+                    accounts: scenario.data.accounts,
+                    incomes: scenario.data.incomes,
+                    expenses: scenario.data.expenses,
+                    milestones: scenario.data.milestones,
+                    settings: scenario.data.settings,
+                    investmentGlidePath: scenario.data.investmentGlidePath,
+                    withdrawalStrategy: scenario.data.withdrawalStrategy,
+                    housing: scenario.data.housing || {
+                        status: 'rent',
+                        rent: { monthlyRent: 0, startYear: scenario.data.settings.planStartYear, endYear: null, annualIncrease: 3.0 },
+                        ownedProperties: []
+                    },
+                    debts: scenario.data.debts || {
+                        creditCards: [],
+                        loans: []
+                    },
+                    scenarios: this.model.scenarios
+                };
+            }
+        }
+
         const selectedYear = parseInt(document.getElementById('futureSankeyYear').value);
-        this.renderSankeyForYear(selectedYear, 'futureSankeyChart', true);
+        this.renderSankeyForYear(selectedYear, 'futureSankeyChart', true, dataModel);
     }
 
     // UNIFIED SANKEY RENDERER - works for both current and future years
-    renderSankeyForYear(selectedYear, chartElementId, showYearLabel) {
-        const currentYear = this.model.settings.planStartYear;
-        const horizon = parseInt(this.model.settings.projectionHorizon || 40);
-        const projections = this.projectionEngine.projectNetWorth(horizon);
+    renderSankeyForYear(selectedYear, chartElementId, showYearLabel, dataModel = null) {
+        const model = dataModel || this.model;
+        const engine = dataModel ? new ProjectionEngine(dataModel) : this.projectionEngine;
+        const currentYear = model.settings.planStartYear;
+        const horizon = parseInt(model.settings.projectionHorizon || 40);
+        const projections = engine.projectNetWorth(horizon);
 
         // Check for empty projections
         if (!projections || projections.length === 0) {
@@ -2974,7 +3012,7 @@ class UIController {
         const incomeSources = [];
 
         // Work income
-        this.model.incomes.forEach(income => {
+        model.incomes.forEach(income => {
             if (selectedYear >= income.startYear && (!income.endYear || selectedYear <= income.endYear)) {
                 const yearsSinceStart = selectedYear - income.startYear;
                 const adjustedAmount = income.amount * Math.pow(1 + income.growth / 100, yearsSinceStart);
@@ -2990,13 +3028,13 @@ class UIController {
         });
 
         // Social Security Person A
-        const personA = this.model.settings.household.personA;
+        const personA = model.settings.household.personA;
         if (personA.socialSecurity && personA.socialSecurity.enabled) {
             const personAAge = selectedYear - personA.birthYear;
             if (personAAge >= personA.socialSecurity.startAge) {
                 const startYear = personA.birthYear + personA.socialSecurity.startAge;
                 const yearsSinceSSStart = Math.max(0, selectedYear - startYear);
-                const inflationRate = this.model.settings.inflation / 100;
+                const inflationRate = model.settings.inflation / 100;
                 const adjustedSS = personA.socialSecurity.annualAmount * Math.pow(1 + inflationRate, yearsSinceSSStart);
                 incomeSources.push({
                     name: `${personA.name} Social Security`,
@@ -3007,13 +3045,13 @@ class UIController {
         }
 
         // Social Security Person B
-        const personB = this.model.settings.household.personB;
+        const personB = model.settings.household.personB;
         if (personB && personB.socialSecurity && personB.socialSecurity.enabled) {
             const personBAge = selectedYear - personB.birthYear;
             if (personBAge >= personB.socialSecurity.startAge) {
                 const startYear = personB.birthYear + personB.socialSecurity.startAge;
                 const yearsSinceSSStart = Math.max(0, selectedYear - startYear);
-                const inflationRate = this.model.settings.inflation / 100;
+                const inflationRate = model.settings.inflation / 100;
                 const adjustedSS = personB.socialSecurity.annualAmount * Math.pow(1 + inflationRate, yearsSinceSSStart);
                 incomeSources.push({
                     name: `${personB.name} Social Security`,
@@ -3024,7 +3062,7 @@ class UIController {
         }
 
         // Pension
-        const pension = this.model.settings.pension;
+        const pension = model.settings.pension;
         if (pension && pension.enabled && selectedYear >= pension.startYear) {
             const yearsSinceStart = selectedYear - pension.startYear;
             const adjustedPension = pension.annualAmount * Math.pow(1 + pension.growth / 100, yearsSinceStart);
@@ -3036,7 +3074,7 @@ class UIController {
         }
 
         // Milestone windfalls (inheritance, gifts, etc.)
-        this.model.milestones.forEach(milestone => {
+        model.milestones.forEach(milestone => {
             if (milestone.year === selectedYear && milestone.isPositive) {
                 incomeSources.push({
                     name: milestone.name,
@@ -3125,7 +3163,7 @@ class UIController {
 
         // Collect expenses by category for that year
         const expensesByCategory = {};
-        this.model.expenses.forEach(exp => {
+        model.expenses.forEach(exp => {
             if (selectedYear >= exp.startYear && (!exp.endYear || selectedYear <= exp.endYear)) {
                 const yearsSinceStart = selectedYear - exp.startYear;
                 const adjustedAmount = exp.amount * Math.pow(1 + exp.growth / 100, yearsSinceStart);
@@ -3139,7 +3177,7 @@ class UIController {
         });
 
         // Add milestone costs as one-time expenses
-        this.model.milestones.forEach(milestone => {
+        model.milestones.forEach(milestone => {
             if (milestone.year === selectedYear && !milestone.isPositive && milestone.cost > 0) {
                 const category = 'milestone_costs';
                 const displayName = milestone.name;
@@ -5534,7 +5572,8 @@ class UIController {
             withdrawalStrategy: this.model.withdrawalStrategy,
             scenarios: this.model.scenarios,
             housing: this.model.housing,
-            debts: this.model.debts
+            debts: this.model.debts,
+            currentScenarioId: this.currentScenarioId // Persist currently viewed scenario
         }));
     }
 
@@ -5667,6 +5706,16 @@ class UIController {
             // Load debts data
             if (parsed.debts) {
                 this.model.debts = parsed.debts;
+            }
+
+            // Restore currently viewed scenario (if it still exists)
+            if (parsed.currentScenarioId) {
+                const scenarioExists = this.model.scenarios.find(s => s.id === parsed.currentScenarioId);
+                if (scenarioExists) {
+                    this.currentScenarioId = parsed.currentScenarioId;
+                } else {
+                    this.currentScenarioId = null; // Scenario was deleted
+                }
             }
         }
     }
