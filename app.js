@@ -6471,11 +6471,49 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' â†
                 "export_date": new Date().toISOString(),
                 "version": "1.0",
                 "tool": "Financial Projection Lab",
-                "purpose": "AI-assisted financial planning review and optimization"
+                "purpose": "AI-assisted financial planning review and optimization",
+                "data_format": "This export contains a complete financial plan with current snapshot, household details, accounts, income/expense projections, investment strategy, and 10-year forward projection"
+            },
+
+            "_executive_summary": {
+                "about_this_plan": `This is a comprehensive ${this.model.settings.projectionHorizon}-year financial projection for ${this.model.settings.household.personB ? 'a couple' : 'an individual'} with ${this.model.accounts.length} investment/savings accounts totaling ${this.formatCurrency(totalAssets)}. The plan projects income, expenses, taxes, investment returns, and account balances through ${this.model.settings.planStartYear + this.model.settings.projectionHorizon}.`,
+
+                "key_facts": {
+                    "current_net_worth": totalAssets,
+                    "annual_income": totalIncome,
+                    "annual_expenses": totalExpenses,
+                    "annual_savings": annualSavings,
+                    "savings_rate": Math.round(savingsRate * 10) / 10 + "%",
+                    "years_to_retirement": this.model.settings.household.personA.retirementYear - this.model.settings.planStartYear,
+                    "retirement_duration": this.model.settings.household.personA.lifeExpectancy - (this.model.settings.household.personA.retirementYear - this.model.settings.household.personA.birthYear),
+                    "withdrawal_strategy": this.model.withdrawalStrategy.type === 'fixed_percentage' ? `${this.model.withdrawalStrategy.withdrawalPercentage}% rule (safe withdrawal rate)` : this.model.withdrawalStrategy.type
+                },
+
+                "financial_health_indicators": {
+                    "savings_rate_assessment": savingsRate >= 20 ? "Excellent (20%+)" : savingsRate >= 15 ? "Good (15-20%)" : savingsRate >= 10 ? "Fair (10-15%)" : savingsRate > 0 ? "Low (<10%)" : "Deficit (negative savings)",
+                    "emergency_fund_assessment": (() => {
+                        const liquidCash = this.model.accounts.filter(a => a.type === 'cash').reduce((sum, a) => sum + a.balance, 0);
+                        const monthsExpenses = totalExpenses > 0 ? liquidCash / (totalExpenses / 12) : 0;
+                        return monthsExpenses >= 9 ? `Strong (${Math.round(monthsExpenses)} months)` :
+                               monthsExpenses >= 6 ? `Adequate (${Math.round(monthsExpenses)} months)` :
+                               monthsExpenses >= 3 ? `Minimal (${Math.round(monthsExpenses)} months)` :
+                               `Insufficient (${Math.round(monthsExpenses)} months)`;
+                    })(),
+                    "retirement_readiness": (() => {
+                        const yearsToRetirement = this.model.settings.household.personA.retirementYear - this.model.settings.planStartYear;
+                        const retirementAge = this.model.settings.household.personA.retirementYear - this.model.settings.household.personA.birthYear;
+                        if (yearsToRetirement <= 0) return "In retirement";
+                        if (totalAssets > totalExpenses * 25) return "On track (25x+ expenses saved)";
+                        if (totalAssets > totalExpenses * 15) return "Good progress (15-25x expenses)";
+                        if (totalAssets > totalExpenses * 5) return "Early stages (5-15x expenses)";
+                        return "Building phase (<5x expenses)";
+                    })(),
+                    "tax_optimization_status": this.model.accounts.filter(a => a.taxAdvantaged).reduce((sum, a) => sum + a.balance, 0) / totalAssets > 0.5 ? "Good (50%+ in tax-advantaged accounts)" : "Opportunity to improve"
+                }
             },
 
             "_instructions_for_ai": {
-                "overview": "You are reviewing a comprehensive personal financial plan. Your role is to act as a financial advisor and provide thoughtful, personalized recommendations.",
+                "overview": "You are reviewing a comprehensive personal financial plan. Your role is to act as a financial advisor and provide thoughtful, personalized recommendations. This plan includes detailed projections showing how their finances will evolve over the next " + this.model.settings.projectionHorizon + " years based on their current situation, planned income/expenses, investment returns, and withdrawal strategy.",
                 "your_tasks": [
                     "Analyze the current financial situation and identify strengths and potential concerns",
                     "Evaluate whether assumptions (growth rates, investment returns, inflation) are realistic for the current economic environment",
@@ -7108,6 +7146,187 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' â†
                 "provide_action_items": "End with a clear, numbered list of specific next steps",
                 "check_validation_first": "ALWAYS start by reviewing the validation_status section - if there are errors, those must be your top priority recommendations",
                 "offer_scenarios": "After your analysis, ask if the user would like you to generate specific scenario files they can upload to test different strategies"
+            },
+
+            "_csv_export_instructions_for_ai": {
+                "purpose": "If the user asks you to export their data as CSV, or if you want to provide them with a modified/optimized version of their plan that they can import back into the tool, use these instructions to generate a properly formatted CSV file.",
+
+                "important_notes": [
+                    "The CSV format is section-based with [SECTION_NAME] headers",
+                    "Each section has a header row with column names, followed by data rows",
+                    "Blank lines separate sections",
+                    "The user can open this CSV in Excel or any text editor to make manual changes",
+                    "The tool can import this CSV to load/update their financial plan",
+                    "Values containing commas or quotes should be wrapped in double quotes",
+                    "Null/empty values for optional fields should be left blank"
+                ],
+
+                "csv_format_specification": {
+                    "overview": "Generate a text file with the following structure. Each section starts with [SECTION] on its own line, followed by a header row, then data rows. Separate sections with blank lines.",
+
+                    "required_sections_in_order": [
+                        "[SETTINGS] - Basic plan configuration",
+                        "[PERSON_A] - Primary person details",
+                        "[PERSON_B] - Optional second person (omit section if single)",
+                        "[ACCOUNTS] - Investment/savings accounts",
+                        "[INCOMES] - Income sources",
+                        "[EXPENSES] - Ongoing expenses",
+                        "[HOUSING_RENTAL] or [HOUSING_OWNED] - Housing details (optional)",
+                        "[CREDIT_CARDS] - Credit card debts (optional)",
+                        "[LOANS] - Other loans (optional)",
+                        "[MILESTONES] - One-time events (optional)",
+                        "[INVESTMENT_GLIDE_PATH] - Return expectations over time",
+                        "[WITHDRAWAL_STRATEGY] - Retirement withdrawal configuration"
+                    ]
+                },
+
+                "section_formats": {
+                    "SETTINGS": {
+                        "header": "PlanStartYear,ProjectionHorizon,Inflation,FilingStatus",
+                        "example": "2026,45,3.0,married",
+                        "notes": "FilingStatus: 'single' or 'married'"
+                    },
+
+                    "PERSON_A": {
+                        "header": "Name,BirthYear,RetirementYear,LifeExpectancy,SS_Enabled,SS_Amount,SS_StartAge",
+                        "example": "John,1980,2045,95,true,30000,70",
+                        "notes": "SS_Enabled: true/false. SS_Amount: annual Social Security benefit. SS_StartAge: 62-70 typical"
+                    },
+
+                    "PERSON_B": {
+                        "header": "Name,BirthYear,RetirementYear,LifeExpectancy,SS_Enabled,SS_Amount,SS_StartAge",
+                        "example": "Jane,1982,2047,95,true,28000,67",
+                        "notes": "Omit entire section if single person plan"
+                    },
+
+                    "ACCOUNTS": {
+                        "header": "Name,Type,Balance,InterestRate",
+                        "example": "401k,traditional,250000,7.0",
+                        "notes": "Type: cash, taxable, traditional, roth, or hsa. InterestRate: expected annual return %"
+                    },
+
+                    "INCOMES": {
+                        "header": "Name,Amount,Frequency,StartYear,EndYear,Category,Growth",
+                        "example": "Salary,8000,monthly,2026,2045,salary,3.0",
+                        "notes": "Frequency: monthly or annual. EndYear: blank for ongoing. Category: salary, business, investment, rental, pension, social_security, freelance, other. Growth: annual increase %"
+                    },
+
+                    "EXPENSES": {
+                        "header": "Name,Amount,Frequency,StartYear,EndYear,Category,Growth",
+                        "example": "Groceries,800,monthly,2026,,food,3.0",
+                        "notes": "Same format as INCOMES. EndYear blank = ongoing. Category: housing, transportation, food, healthcare, entertainment, insurance, utilities, other"
+                    },
+
+                    "HOUSING_RENTAL": {
+                        "header": "MonthlyRent,AnnualIncrease,StartYear",
+                        "example": "2000,3.0,2026",
+                        "notes": "Only include if renting. Omit if owning home."
+                    },
+
+                    "HOUSING_OWNED": {
+                        "header": "Name,PurchaseYear,PurchasePrice,DownPayment,InterestRate,LoanTermYears,PropertyTaxRate,InsuranceAnnual,HOA_Monthly,MaintenanceRate,AppreciationRate",
+                        "example": "Primary Home,2020,400000,80000,6.5,30,1.2,1500,0,1.0,3.0",
+                        "notes": "Only include if owning. PropertyTaxRate/MaintenanceRate/AppreciationRate are annual percentages. Can have multiple properties (multiple rows)."
+                    },
+
+                    "CREDIT_CARDS": {
+                        "header": "Name,Balance,APR,MinimumPaymentPercent,ExtraPayment",
+                        "example": "Chase Card,5000,18.0,2.0,100",
+                        "notes": "Optional section. MinimumPaymentPercent: typical 2-3%. ExtraPayment: additional monthly payment"
+                    },
+
+                    "LOANS": {
+                        "header": "Name,Type,Balance,InterestRate,MonthlyPayment,StartYear,TermYears",
+                        "example": "Auto Loan,auto,25000,5.0,472,2024,5",
+                        "notes": "Optional section. Type: auto, student, personal, other"
+                    },
+
+                    "MILESTONES": {
+                        "header": "Year,Name,Type,Cost,IsPositive,Recurring,RecurringAmount,RecurringInterval,RecurringGrowth",
+                        "example": "2030,New Car,other,35000,false,true,40000,8,5.0",
+                        "notes": "Optional section. Type: retirement, home, education, travel, other. IsPositive: false=expense, true=windfall. Recurring: true if repeats. RecurringInterval: years between recurrences"
+                    },
+
+                    "INVESTMENT_GLIDE_PATH": {
+                        "header": "StartYear,ExpectedReturn,Volatility",
+                        "example_rows": [
+                            "2026,8.0,18",
+                            "2035,6.0,12",
+                            "2050,4.0,6"
+                        ],
+                        "notes": "Define investment return expectations over time. Typical: aggressive (8-10%) early, conservative (4-5%) late. Volatility is standard deviation."
+                    },
+
+                    "WITHDRAWAL_STRATEGY": {
+                        "header": "Type,WithdrawalPercentage,InflationAdjusted,FixedAmount,RMD_StartAge,WithdrawalStartYear,WithdrawalMode",
+                        "example": "fixed_percentage,4.0,true,0,73,,as_needed",
+                        "notes": "Type: fixed_percentage (4% rule), fixed_amount, dynamic, rmd. WithdrawalMode: as_needed (only withdraw when needed) or always (strategic withdrawals even with surplus). WithdrawalStartYear: leave blank for auto-detection"
+                    }
+                },
+
+                "complete_csv_example": `[SETTINGS]
+PlanStartYear,ProjectionHorizon,Inflation,FilingStatus
+2026,45,3.0,married
+
+[PERSON_A]
+Name,BirthYear,RetirementYear,LifeExpectancy,SS_Enabled,SS_Amount,SS_StartAge
+John,1980,2045,95,true,30000,70
+
+[PERSON_B]
+Name,BirthYear,RetirementYear,LifeExpectancy,SS_Enabled,SS_Amount,SS_StartAge
+Jane,1982,2047,95,true,28000,67
+
+[ACCOUNTS]
+Name,Type,Balance,InterestRate
+401k,traditional,250000,7.0
+Roth IRA,roth,80000,7.0
+Brokerage,taxable,120000,7.0
+Savings,cash,50000,3.5
+
+[INCOMES]
+Name,Amount,Frequency,StartYear,EndYear,Category,Growth
+John Salary,8000,monthly,2026,2045,salary,3.0
+Jane Salary,7000,monthly,2026,2047,salary,3.0
+
+[EXPENSES]
+Name,Amount,Frequency,StartYear,EndYear,Category,Growth
+Groceries,800,monthly,2026,,food,3.0
+Healthcare,500,monthly,2026,2044,healthcare,5.0
+Healthcare Medicare,400,monthly,2045,,healthcare,4.0
+Travel,15000,annual,2026,,entertainment,3.0
+
+[MILESTONES]
+Year,Name,Type,Cost,IsPositive,Recurring,RecurringAmount,RecurringInterval,RecurringGrowth
+2030,New Car,other,35000,false,true,40000,8,5.0
+
+[INVESTMENT_GLIDE_PATH]
+StartYear,ExpectedReturn,Volatility
+2026,8.0,18
+2035,6.0,12
+2050,4.0,6
+
+[WITHDRAWAL_STRATEGY]
+Type,WithdrawalPercentage,InflationAdjusted,FixedAmount,RMD_StartAge,WithdrawalStartYear,WithdrawalMode
+fixed_percentage,4.0,true,0,73,,as_needed`,
+
+                "how_to_generate_csv_for_user": [
+                    "1. Extract the relevant data from the JSON sections above (accounts, incomes, expenses, etc.)",
+                    "2. Format it according to the CSV specification with proper section headers",
+                    "3. Ensure all required sections are included in the correct order",
+                    "4. Include optional sections (housing, debts, milestones) only if the user has data for them",
+                    "5. Use blank values for optional fields (e.g., EndYear for ongoing expenses)",
+                    "6. Present the CSV in a code block so the user can easily copy it",
+                    "7. Instruct the user to save it as a .csv file and use the Import button in the tool"
+                ],
+
+                "when_to_provide_csv": [
+                    "User explicitly asks for a CSV export",
+                    "User asks you to 'optimize' or 'improve' their plan and wants to import the changes",
+                    "You suggest modifications and user wants them in importable format",
+                    "User wants to create a scenario variation they can test"
+                ],
+
+                "user_instructions_template": "Save this as a .csv file (e.g., 'financial-plan.csv'), then in the Financial Projection Tool, click Settings â†’ Import Data â†’ Import CSV File and select your saved file. The tool will load all your data automatically."
             }
         };
 
