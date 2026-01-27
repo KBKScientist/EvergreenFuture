@@ -1965,7 +1965,6 @@ class UIController {
         // Scenario management
         document.getElementById('saveScenarioBtn').addEventListener('click', () => this.saveScenario());
         document.getElementById('clearScenariosBtn').addEventListener('click', () => this.clearScenarios());
-        document.getElementById('returnToBaseBtn').addEventListener('click', () => this.returnToBasePlan());
 
         // Settings
         document.getElementById('saveSettingsBtn').addEventListener('click', () => this.saveSettings());
@@ -2363,7 +2362,30 @@ class UIController {
         // Update scenario indicator
         this.updateScenarioIndicator();
 
-        const projections = this.projectionEngine.projectNetWorth(40);
+        // Get the data to display - either scenario or base plan
+        let dataModel = this.model;
+        if (this.currentScenarioId) {
+            const scenario = this.model.scenarios.find(s => s.id === this.currentScenarioId);
+            if (scenario) {
+                // Create a temporary model with scenario data for projections
+                dataModel = {
+                    accounts: scenario.data.accounts,
+                    incomes: scenario.data.incomes,
+                    expenses: scenario.data.expenses,
+                    milestones: scenario.data.milestones,
+                    settings: scenario.data.settings,
+                    investmentGlidePath: scenario.data.investmentGlidePath,
+                    withdrawalStrategy: scenario.data.withdrawalStrategy,
+                    housing: scenario.data.housing || this.model.housing,
+                    debts: scenario.data.debts || this.model.debts,
+                    scenarios: this.model.scenarios // Keep scenarios list
+                };
+            }
+        }
+
+        // Create projection engine with the appropriate data
+        const engine = new ProjectionEngine(dataModel);
+        const projections = engine.projectNetWorth(40);
 
         // Update net worth chart with breakdown
         this.charts.netWorth.data.labels = projections.map(p => p.year);
@@ -2376,13 +2398,13 @@ class UIController {
         this.charts.netWorth.update();
 
         // Update summary stats
-        const currentNetWorth = this.model.accounts.reduce((sum, acc) => sum + acc.balance, 0);
+        const currentNetWorth = dataModel.accounts.reduce((sum, acc) => sum + acc.balance, 0);
         const projectedNetWorth = projections[projections.length - 1].netWorth;
-        const annualIncome = this.model.incomes.reduce((sum, inc) => {
+        const annualIncome = dataModel.incomes.reduce((sum, inc) => {
             const amount = inc.frequency === 'monthly' ? inc.amount * 12 : inc.amount;
             return sum + amount;
         }, 0);
-        const annualExpenses = this.model.expenses.reduce((sum, exp) => {
+        const annualExpenses = dataModel.expenses.reduce((sum, exp) => {
             const amount = exp.frequency === 'monthly' ? exp.amount * 12 : exp.amount;
             return sum + amount;
         }, 0);
@@ -2391,19 +2413,19 @@ class UIController {
         let housingMetrics = '';
         let debtMetrics = '';
 
-        if (this.model.housing.status === 'rent' && this.model.housing.rent.monthlyRent > 0) {
-            const annualRent = this.model.housing.rent.monthlyRent * 12;
+        if (dataModel.housing.status === 'rent' && dataModel.housing.rent.monthlyRent > 0) {
+            const annualRent = dataModel.housing.rent.monthlyRent * 12;
             housingMetrics = `
                 <div class="stat-item">
                     <div class="stat-label">Housing (Rent)</div>
                     <div class="stat-value">$${annualRent.toLocaleString()}/yr</div>
                 </div>
             `;
-        } else if (this.model.housing.status === 'own' && this.model.housing.ownedProperties.length > 0) {
-            const property = this.model.housing.ownedProperties[0];
-            const year = this.model.settings.planStartYear;
-            const homeValue = this.projectionEngine.calculateHomeValueForYear(property, year);
-            const mortgageData = this.projectionEngine.calculateMortgageBalanceForYear(property, year);
+        } else if (dataModel.housing.status === 'own' && dataModel.housing.ownedProperties.length > 0) {
+            const property = dataModel.housing.ownedProperties[0];
+            const year = dataModel.settings.planStartYear;
+            const homeValue = engine.calculateHomeValueForYear(property, year);
+            const mortgageData = engine.calculateMortgageBalanceForYear(property, year);
             const equity = homeValue - mortgageData.balance;
             housingMetrics = `
                 <div class="stat-item">
@@ -2417,13 +2439,13 @@ class UIController {
             `;
         }
 
-        const totalCreditCardDebt = this.model.debts.creditCards.reduce((sum, card) => sum + card.balance, 0);
-        const totalLoanDebt = this.model.debts.loans.reduce((sum, loan) => sum + loan.balance, 0);
+        const totalCreditCardDebt = dataModel.debts.creditCards.reduce((sum, card) => sum + card.balance, 0);
+        const totalLoanDebt = dataModel.debts.loans.reduce((sum, loan) => sum + loan.balance, 0);
         const totalDebt = totalCreditCardDebt + totalLoanDebt;
 
         if (totalDebt > 0) {
-            const year = this.model.settings.planStartYear;
-            const debtData = this.projectionEngine.calculateDebtCostsForYear(year);
+            const year = dataModel.settings.planStartYear;
+            const debtData = engine.calculateDebtCostsForYear(year);
             debtMetrics = `
                 <div class="stat-item">
                     <div class="stat-label">Total Debt</div>
@@ -6094,13 +6116,10 @@ class UIController {
                 this.saveData();
                 this.closeModal();
 
-                // Load the new scenario automatically
-                this.loadScenario(newScenario.id);
+                // View the new scenario automatically
+                this.viewScenario(newScenario.id);
 
-                // Switch to scenarios tab
-                document.querySelector('[data-tab="scenarios"]').click();
-
-                alert(`✓ Scenario "${name}" imported and loaded!\n\nYou can now view it in the dashboard or compare it with other scenarios.`);
+                alert(`✓ Scenario "${name}" imported!\n\nYou're now viewing this scenario. Go to the Scenarios tab to switch between scenarios.`);
             });
         }, 0);
     }
@@ -7983,30 +8002,22 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         return div.innerHTML;
     }
 
-    loadScenario(scenarioId) {
-        const scenario = this.model.scenarios.find(s => s.id === scenarioId);
-        if (!scenario) return;
-
-        const confirmed = confirm(`Load scenario "${scenario.name}"?\n\nThis will replace your current data with the saved scenario. Make sure to save your current plan as a scenario first if you want to keep it!`);
-        if (!confirmed) return;
-
-        // Load the scenario data into the model
-        this.model.accounts = JSON.parse(JSON.stringify(scenario.data.accounts));
-        this.model.incomes = JSON.parse(JSON.stringify(scenario.data.incomes));
-        this.model.expenses = JSON.parse(JSON.stringify(scenario.data.expenses));
-        this.model.milestones = JSON.parse(JSON.stringify(scenario.data.milestones));
-        this.model.settings = JSON.parse(JSON.stringify(scenario.data.settings));
-        this.model.investmentGlidePath = JSON.parse(JSON.stringify(scenario.data.investmentGlidePath));
-        this.model.withdrawalStrategy = JSON.parse(JSON.stringify(scenario.data.withdrawalStrategy));
-
-        // Mark this scenario as currently loaded
+    viewScenario(scenarioId) {
+        // Switch view to display this scenario's data
         this.currentScenarioId = scenarioId;
-
-        this.saveData();
+        this.updateScenarioIndicator();
+        this.updateScenariosList();
         this.updateDashboard();
-        this.updateScenariosList(); // Refresh to show current indicator
         this.switchTab('dashboard');
-        alert(`✓ Loaded scenario "${scenario.name}"\n\nYou can now view Monte Carlo, Sankey, and all other tabs with this scenario's data.`);
+    }
+
+    viewBasePlan() {
+        // Switch view back to base plan
+        this.currentScenarioId = null;
+        this.updateScenarioIndicator();
+        this.updateScenariosList();
+        this.updateDashboard();
+        this.switchTab('dashboard');
     }
 
     updateScenarioIndicator() {
@@ -8025,19 +8036,6 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
             }
         } else {
             indicator.style.display = 'none';
-        }
-    }
-
-    returnToBasePlan() {
-        if (this.currentScenarioId) {
-            const confirmed = confirm('Return to your base plan?\n\nThis will unload the current scenario. Make sure to save any changes as a scenario first if you want to keep them!');
-            if (!confirmed) return;
-
-            this.currentScenarioId = null;
-            this.updateScenarioIndicator();
-            this.updateScenariosList(); // Refresh scenario list to remove current indicator
-            this.updateDashboard();
-            alert('✓ Returned to base plan');
         }
     }
 
@@ -8078,7 +8076,21 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
             return;
         }
 
+        // Add base plan as first "scenario"
+        const isViewingBase = this.currentScenarioId === null;
+        const baseBadge = isViewingBase ? '<span style="background: var(--success); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 8px; font-weight: 600;">CURRENT</span>' : '';
+        const baseHighlight = isViewingBase ? 'border: 2px solid var(--success); background: rgba(107, 144, 128, 0.05);' : '';
+
         container.innerHTML = '<div class="item-list">' +
+            `<div class="list-item" style="${baseHighlight}">
+                <div class="list-item-info">
+                    <h3>📁 Base Plan${baseBadge}</h3>
+                    <p>Your current working plan</p>
+                </div>
+                <div class="list-item-actions">
+                    <button class="btn btn-primary" onclick="ui.viewBasePlan()" ${isViewingBase ? 'disabled' : ''}>View</button>
+                </div>
+            </div>` +
             this.model.scenarios.map(scenario => {
                 const date = new Date(scenario.date).toLocaleDateString();
                 const isCurrent = this.currentScenarioId === scenario.id;
@@ -8092,8 +8104,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
                             <p>Saved on ${date}</p>
                         </div>
                         <div class="list-item-actions">
-                            <button class="btn btn-primary" onclick="ui.compareScenario(${scenario.id})">Compare to Current</button>
-                            <button class="btn btn-secondary" onclick="ui.loadScenario(${scenario.id})" ${isCurrent ? 'disabled' : ''}>Load</button>
+                            <button class="btn btn-primary" onclick="ui.viewScenario(${scenario.id})" ${isCurrent ? 'disabled' : ''}>View</button>
+                            <button class="btn btn-secondary" onclick="ui.compareScenario(${scenario.id})">Compare</button>
                             <button class="btn btn-danger" onclick="ui.deleteScenario(${scenario.id})">Delete</button>
                         </div>
                     </div>
