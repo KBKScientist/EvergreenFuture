@@ -3409,15 +3409,15 @@ class UIController {
             });
         }
 
-        // Add savings node if positive net savings, or deficit node if negative
-        if (netSavings > 0.01) {
-            // Surplus year - add savings node (money flows OUT from Total Income)
+        // Add savings node if positive net savings (only in accumulation phase, not drawdown)
+        // In drawdown phase (when withdrawing), don't show savings - it's just account growth from returns, not cash flow
+        const hasWithdrawals = (yearData.withdrawals || 0) > 0;
+
+        if (netSavings > 0.01 && !hasWithdrawals) {
+            // Accumulation phase: Surplus year - add savings node (money flows OUT from Total Income)
             const savingsNodeId = nodeId++;
-            // In retirement (when withdrawing), label as "Investment Growth" instead of "Savings"
-            const hasWithdrawals = (yearData.withdrawals || 0) > 0;
-            const savingsLabel = hasWithdrawals ? 'Investment Growth' : 'Savings/Investments';
             nodes.push({
-                name: savingsLabel,
+                name: 'Savings/Investments',
                 type: 'savings'
             });
             links.push({
@@ -3425,8 +3425,8 @@ class UIController {
                 target: savingsNodeId,
                 value: netSavings
             });
-        } else if (netSavings < -0.01) {
-            // Deficit year - add "From Returns" node (money flows IN to Total Income)
+        } else if (netSavings < -0.01 && !hasWithdrawals) {
+            // Accumulation phase: Deficit year - add "From Returns" node (money flows IN to Total Income)
             // This represents the difference being covered by investment returns
             const deficitNodeId = nodeId++;
             nodes.push({
@@ -3440,6 +3440,8 @@ class UIController {
                 value: Math.abs(netSavings)
             });
         }
+        // In drawdown phase: Don't show savings/deficit nodes - Sankey shows pure cash flow
+        // Withdrawals go directly to expenses/taxes. Investment growth shows in net worth chart, not cash flow.
 
         // Create links from income sources to total income
         incomeSources.forEach(source => {
