@@ -7997,20 +7997,66 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
     }
 
     saveScenario() {
-        const scenarioName = prompt('Enter a name for this scenario:', `Scenario ${this.scenarios.length + 1}`);
-        if (!scenarioName) return;
+        this.showSaveScenarioModal();
+    }
 
-        const scenario = {
-            id: Date.now(),
-            name: scenarioName,
-            date: new Date().toISOString(),
-            data: this.getCurrentPlanData()
-        };
+    showSaveScenarioModal() {
+        const modal = document.getElementById('modal');
+        const defaultName = `Scenario ${this.scenarios.length + 1}`;
 
-        this.scenarios.push(scenario);
-        this.saveData();
-        this.updateScenariosList();
-        alert(`✓ Scenario "${scenarioName}" saved!`);
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px;">
+                <h2>Save Scenario</h2>
+
+                <div class="form-group">
+                    <label>Scenario Name <span style="color: var(--danger);">*</span></label>
+                    <input type="text" id="scenarioName" value="${defaultName}" placeholder="Enter scenario name" autofocus>
+                </div>
+
+                <div class="form-group">
+                    <label>Description (Optional)</label>
+                    <textarea id="scenarioDescription" placeholder="Add notes about this scenario..." rows="4" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="ui.closeModal()">Cancel</button>
+                    <button class="btn btn-primary" id="confirmSaveScenarioBtn">Save Scenario</button>
+                </div>
+            </div>
+        `;
+
+        modal.style.display = 'block';
+
+        document.getElementById('confirmSaveScenarioBtn').addEventListener('click', () => {
+            const name = document.getElementById('scenarioName').value.trim();
+            const description = document.getElementById('scenarioDescription').value.trim();
+
+            if (!name) {
+                alert('Please enter a scenario name');
+                return;
+            }
+
+            const scenario = {
+                id: Date.now(),
+                name: name,
+                description: description || undefined,
+                date: new Date().toISOString(),
+                data: this.getCurrentPlanData()
+            };
+
+            this.scenarios.push(scenario);
+            this.saveData();
+            this.updateScenariosList();
+            this.closeModal();
+            alert(`✓ Scenario "${name}" saved!`);
+        });
+
+        // Allow Enter key to save in the name field
+        document.getElementById('scenarioName').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('confirmSaveScenarioBtn').click();
+            }
+        });
     }
 
     updateCurrentScenario() {
