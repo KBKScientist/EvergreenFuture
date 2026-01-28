@@ -8419,8 +8419,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
             settingsHtml += `</div></div>`;
         }
 
-        if (cSet.household?.personB) {
-            if (cSet.household.personB.retirementYear !== sSet.household?.personB?.retirementYear) {
+        if (cSet.household?.personB && sSet.household?.personB) {
+            if (cSet.household.personB.retirementYear !== sSet.household.personB.retirementYear) {
                 hasSettingsChanges = true;
                 settingsHtml += `<div class="comparison-item changed">
                     <div class="comparison-item-header">
