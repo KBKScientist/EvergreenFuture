@@ -642,10 +642,14 @@ class ProjectionEngine {
                     if (year >= property.purchaseYear && (!property.sellYear || year < property.sellYear)) {
                         if (year === this.model.settings.planStartYear) {
                             console.log(`Property "${property.name}" active in year ${year}, purchase year: ${property.purchaseYear}`);
+                            console.log(`Property data: loanAmount=${property.loanAmount}, monthlyPayment=${property.monthlyPayment}, interestRate=${property.interestRate}, loanTermYears=${property.loanTermYears}`);
                         }
                         // Calculate current home value with appreciation
                         const currentHomeValue = this.calculateHomeValueForYear(property, year);
                         const mortgageData = this.calculateMortgageBalanceForYear(property, year);
+                        if (year === this.model.settings.planStartYear) {
+                            console.log(`Mortgage data: balance=${mortgageData.balance}, monthlyPayment=${mortgageData.monthlyPayment}`);
+                        }
 
                         // Calculate housing costs broken down
                         const monthlyPayment = mortgageData.monthlyPayment || 0;
