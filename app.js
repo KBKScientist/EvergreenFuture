@@ -3027,11 +3027,7 @@ class UIController {
         let annualIncome = yearData.income;
         let annualExpenses = yearData.expenses;
 
-        // Check if there's any meaningful data to display
-        if (!annualIncome || annualIncome === 0) {
-            document.getElementById(chartElementId).innerHTML = '<p style="padding: 20px; text-align: center; color: #64748b;">Add income sources to see cash flow visualization.</p>';
-            return;
-        }
+        // Note: We'll check for meaningful data AFTER collecting all income sources (including withdrawals)
 
         // Generate Sankey diagram
         const width = document.getElementById(chartElementId).offsetWidth || 800;
@@ -3209,6 +3205,12 @@ class UIController {
         incomeSources.forEach(src => {
             totalCollected += src.amount;
         });
+
+        // Check if there's any meaningful data to display (after collecting ALL income sources including withdrawals)
+        if (!totalCollected || totalCollected === 0) {
+            document.getElementById(chartElementId).innerHTML = '<p style="padding: 20px; text-align: center; color: #64748b;">Add income sources to see cash flow visualization.</p>';
+            return;
+        }
 
         // Collect expenses by category for that year
         const expensesByCategory = {};
