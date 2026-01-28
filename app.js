@@ -5785,6 +5785,16 @@ class UIController {
     closeModal() {
         try {
             console.log('🚪 closeModal() called');
+
+            // First check for the generic modal (id="modal")
+            const genericModal = document.getElementById('modal');
+            if (genericModal && genericModal.style.display !== 'none') {
+                genericModal.style.display = 'none';
+                genericModal.innerHTML = '';
+                console.log('✅ Generic modal closed');
+                return;
+            }
+
             // Find ALL modals and log them
             const allModals = document.querySelectorAll('.modal');
             console.log(`Found ${allModals.length} modals:`, Array.from(allModals).map(m => ({
@@ -8025,7 +8035,7 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
             </div>
         `;
 
-        modal.style.display = 'block';
+        modal.style.display = 'flex';
 
         document.getElementById('confirmSaveScenarioBtn').addEventListener('click', () => {
             const name = document.getElementById('scenarioName').value.trim();
@@ -8055,6 +8065,13 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         document.getElementById('scenarioName').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 document.getElementById('confirmSaveScenarioBtn').click();
+            }
+        });
+
+        // Close modal when clicking outside the content
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeModal();
             }
         });
     }
