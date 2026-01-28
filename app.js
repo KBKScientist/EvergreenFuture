@@ -635,8 +635,14 @@ class ProjectionEngine {
                     housingCosts = rentCost;
                 }
             } else if (this.model.housing.status === 'own') {
+                if (year === this.model.settings.planStartYear && this.model.housing.ownedProperties.length > 0) {
+                    console.log(`Housing status: own, Found ${this.model.housing.ownedProperties.length} properties`);
+                }
                 this.model.housing.ownedProperties.forEach(property => {
                     if (year >= property.purchaseYear && (!property.sellYear || year < property.sellYear)) {
+                        if (year === this.model.settings.planStartYear) {
+                            console.log(`Property "${property.name}" active in year ${year}, purchase year: ${property.purchaseYear}`);
+                        }
                         // Calculate current home value with appreciation
                         const currentHomeValue = this.calculateHomeValueForYear(property, year);
                         const mortgageData = this.calculateMortgageBalanceForYear(property, year);
@@ -5336,17 +5342,27 @@ class UIController {
 
         document.body.appendChild(modal);
 
-        // Add event listeners
-        const closeBtn = modal.querySelector('.close-modal');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => this.closeModal());
-        }
+        // Add event listeners with setTimeout to ensure DOM is ready
+        setTimeout(() => {
+            const closeBtn = modal.querySelector('.close-modal');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => this.closeModal());
+            }
 
-        document.getElementById('cancelPropertyBtn').addEventListener('click', () => this.closeModal());
-        document.getElementById('savePropertyBtn').addEventListener('click', () => {
-            if (isEdit) this.updateProperty(property.id);
-            else this.addProperty();
-        });
+            const cancelBtn = document.getElementById('cancelPropertyBtn');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => this.closeModal());
+            }
+
+            const saveBtn = document.getElementById('savePropertyBtn');
+            if (saveBtn) {
+                // Use once: true to prevent duplicate event handlers
+                saveBtn.addEventListener('click', () => {
+                    if (isEdit) this.updateProperty(property.id);
+                    else this.addProperty();
+                }, { once: true });
+            }
+        }, 0);
     }
 
     showCreditCardModal(card = null) {
