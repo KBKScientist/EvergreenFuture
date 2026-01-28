@@ -1898,10 +1898,12 @@ class MonteCarloSimulator {
 class UIController {
     constructor() {
         this.model = new FinancialModel();
+        this.basePlan = null; // Stores the base plan when viewing a scenario
+        this.scenarios = []; // Stored scenarios list (separate from working data)
         this.projectionEngine = new ProjectionEngine(this.model);
         this.simulator = new MonteCarloSimulator(this.model, this.projectionEngine);
         this.charts = {};
-        this.currentScenarioId = null; // Track which scenario is currently loaded
+        this.currentScenarioId = null; // Track which scenario is currently loaded (null = base plan)
 
         this.initializeEventListeners();
         this.initializeCharts();
@@ -2408,38 +2410,18 @@ class UIController {
         // Update scenario indicator
         this.updateScenarioIndicator();
 
-        // Get the data to display - either scenario or base plan
-        let dataModel = this.model;
-        if (this.currentScenarioId) {
-            const scenario = this.model.scenarios.find(s => s.id === this.currentScenarioId);
-            if (scenario) {
-                // Create a temporary model with scenario data for projections
-                dataModel = {
-                    accounts: scenario.data.accounts,
-                    incomes: scenario.data.incomes,
-                    expenses: scenario.data.expenses,
-                    milestones: scenario.data.milestones,
-                    settings: scenario.data.settings,
-                    investmentGlidePath: scenario.data.investmentGlidePath,
-                    withdrawalStrategy: scenario.data.withdrawalStrategy,
-                    // Use scenario housing/debts if they exist, otherwise initialize as empty
-                    housing: scenario.data.housing || {
-                        status: 'rent',
-                        rent: { monthlyRent: 0, startYear: scenario.data.settings.planStartYear, endYear: null, annualIncrease: 3.0 },
-                        ownedProperties: []
-                    },
-                    debts: scenario.data.debts || {
-                        creditCards: [],
-                        loans: []
-                    },
-                    scenarios: this.model.scenarios // Keep scenarios list
-                };
-            }
-        }
+        console.log('📊 updateDashboard - currentScenarioId:', this.currentScenarioId);
+        console.log('📊 Current working data:', {
+            rentalPeriods: this.model.housing.rentalPeriods?.length || 0,
+            ownedProperties: this.model.housing.ownedProperties?.length || 0,
+            accounts: this.model.accounts.length,
+            incomes: this.model.incomes.length,
+            expenses: this.model.expenses.length
+        });
 
-        // Create projection engine with the appropriate data
-        const engine = new ProjectionEngine(dataModel);
-        const projections = engine.projectNetWorth(40);
+        // this.model always contains the current working data (base plan or loaded scenario)
+        // So we can use this.projectionEngine directly which is already pointing to this.model
+        const projections = this.projectionEngine.projectNetWorth(40);
 
         // Update net worth chart with breakdown
         this.charts.netWorth.data.labels = projections.map(p => p.year);
@@ -2465,13 +2447,13 @@ class UIController {
         this.charts.netWorth.update();
 
         // Update summary stats
-        const currentNetWorth = dataModel.accounts.reduce((sum, acc) => sum + acc.balance, 0);
+        const currentNetWorth = this.model.accounts.reduce((sum, acc) => sum + acc.balance, 0);
         const projectedNetWorth = projections[projections.length - 1].netWorth;
-        const annualIncome = dataModel.incomes.reduce((sum, inc) => {
+        const annualIncome = this.model.incomes.reduce((sum, inc) => {
             const amount = inc.frequency === 'monthly' ? inc.amount * 12 : inc.amount;
             return sum + amount;
         }, 0);
-        const annualExpenses = dataModel.expenses.reduce((sum, exp) => {
+        const annualExpenses = this.model.expenses.reduce((sum, exp) => {
             const amount = exp.frequency === 'monthly' ? exp.amount * 12 : exp.amount;
             return sum + amount;
         }, 0);
@@ -2481,14 +2463,14 @@ class UIController {
         let debtMetrics = '';
 
         // Calculate current housing costs based on active periods
-        const currentYear = dataModel.settings.planStartYear;
+        const currentYear = this.model.settings.planStartYear;
         let totalRentCost = 0;
         let totalHomeValue = 0;
         let totalMortgageBalance = 0;
 
         // Calculate active rental costs
-        if (dataModel.housing.rentalPeriods) {
-            dataModel.housing.rentalPeriods.forEach(rental => {
+        if (this.model.housing.rentalPeriods) {
+            this.model.housing.rentalPeriods.forEach(rental => {
                 if (currentYear >= rental.startYear && (!rental.endYear || currentYear <= rental.endYear)) {
                     const yearsSinceStart = currentYear - rental.startYear;
                     const adjustedRent = rental.monthlyRent * Math.pow(1 + rental.annualIncrease / 100, yearsSinceStart);
@@ -2498,11 +2480,11 @@ class UIController {
         }
 
         // Calculate active owned property values
-        if (dataModel.housing.ownedProperties) {
-            dataModel.housing.ownedProperties.forEach(property => {
+        if (this.model.housing.ownedProperties) {
+            this.model.housing.ownedProperties.forEach(property => {
                 if (currentYear >= property.purchaseYear && (!property.sellYear || currentYear < property.sellYear)) {
-                    const homeValue = engine.calculateHomeValueForYear(property, currentYear);
-                    const mortgageData = engine.calculateMortgageBalanceForYear(property, currentYear);
+                    const homeValue = this.projectionEngine.calculateHomeValueForYear(property, currentYear);
+                    const mortgageData = this.projectionEngine.calculateMortgageBalanceForYear(property, currentYear);
                     totalHomeValue += homeValue;
                     totalMortgageBalance += mortgageData.balance;
                 }
@@ -2534,13 +2516,13 @@ class UIController {
         }
         housingMetrics = housingItems.join('');
 
-        const totalCreditCardDebt = dataModel.debts.creditCards.reduce((sum, card) => sum + card.balance, 0);
-        const totalLoanDebt = dataModel.debts.loans.reduce((sum, loan) => sum + loan.balance, 0);
+        const totalCreditCardDebt = this.model.debts.creditCards.reduce((sum, card) => sum + card.balance, 0);
+        const totalLoanDebt = this.model.debts.loans.reduce((sum, loan) => sum + loan.balance, 0);
         const totalDebt = totalCreditCardDebt + totalLoanDebt;
 
         if (totalDebt > 0) {
-            const year = dataModel.settings.planStartYear;
-            const debtData = engine.calculateDebtCostsForYear(year);
+            const year = this.model.settings.planStartYear;
+            const debtData = this.projectionEngine.calculateDebtCostsForYear(year);
             debtMetrics = `
                 <div class="stat-item">
                     <div class="stat-label">Total Debt</div>
@@ -2589,7 +2571,7 @@ class UIController {
 
         // Update Sankey diagram (current year using projection data)
         try {
-            this.updateSankeyDiagram(annualIncome, annualExpenses, dataModel);
+            this.updateSankeyDiagram(annualIncome, annualExpenses, this.model);
         } catch (e) {
             console.error('Error updating Sankey diagram:', e);
         }
@@ -3013,35 +2995,9 @@ class UIController {
     }
 
     updateFutureSankey() {
-        // Get the current scenario's data model if viewing a scenario
-        let dataModel = this.model;
-        if (this.currentScenarioId) {
-            const scenario = this.model.scenarios.find(s => s.id === this.currentScenarioId);
-            if (scenario) {
-                dataModel = {
-                    accounts: scenario.data.accounts,
-                    incomes: scenario.data.incomes,
-                    expenses: scenario.data.expenses,
-                    milestones: scenario.data.milestones,
-                    settings: scenario.data.settings,
-                    investmentGlidePath: scenario.data.investmentGlidePath,
-                    withdrawalStrategy: scenario.data.withdrawalStrategy,
-                    housing: scenario.data.housing || {
-                        status: 'rent',
-                        rent: { monthlyRent: 0, startYear: scenario.data.settings.planStartYear, endYear: null, annualIncrease: 3.0 },
-                        ownedProperties: []
-                    },
-                    debts: scenario.data.debts || {
-                        creditCards: [],
-                        loans: []
-                    },
-                    scenarios: this.model.scenarios
-                };
-            }
-        }
-
+        // this.model always contains the current working data (base plan or loaded scenario)
         const selectedYear = parseInt(document.getElementById('futureSankeyYear').value);
-        this.renderSankeyForYear(selectedYear, 'futureSankeyChart', true, dataModel);
+        this.renderSankeyForYear(selectedYear, 'futureSankeyChart', true, null);
     }
 
     // UNIFIED SANKEY RENDERER - works for both current and future years
@@ -3070,6 +3026,12 @@ class UIController {
         // Calculate income components for that year
         let annualIncome = yearData.income;
         let annualExpenses = yearData.expenses;
+
+        // Check if there's any meaningful data to display
+        if (!annualIncome || annualIncome === 0) {
+            document.getElementById(chartElementId).innerHTML = '<p style="padding: 20px; text-align: center; color: #64748b;">Add income sources to see cash flow visualization.</p>';
+            return;
+        }
 
         // Generate Sankey diagram
         const width = document.getElementById(chartElementId).offsetWidth || 800;
@@ -4679,7 +4641,7 @@ class UIController {
             securityDeposit: parseFloat(document.getElementById('rentalSecurityDeposit').value) || 0
         };
 
-        console.log('Adding rental period:', rental);
+        console.log('Adding rental period to current working plan:', rental);
         this.model.addRentalPeriod(rental);
         console.log('Total rental periods after add:', this.model.housing.rentalPeriods.length);
 
@@ -4721,12 +4683,14 @@ class UIController {
         const container = document.getElementById('rentalPeriodsList');
         if (!container) return;
 
-        if (this.model.housing.rentalPeriods.length === 0) {
+        const rentalPeriods = this.model.housing.rentalPeriods;
+
+        if (rentalPeriods.length === 0) {
             container.innerHTML = '<p style="color: #999; font-style: italic;">No rental periods added yet</p>';
             return;
         }
 
-        container.innerHTML = this.model.housing.rentalPeriods
+        container.innerHTML = rentalPeriods
             .sort((a, b) => a.startYear - b.startYear)
             .map(rental => {
                 const endYearText = rental.endYear ? rental.endYear : 'Ongoing';
@@ -5820,45 +5784,94 @@ class UIController {
 
     closeModal() {
         try {
-            console.log('closeModal() called');
-            const modal = document.querySelector('.modal');
-            console.log('Found modal element:', modal);
-            if (modal) {
-                modal.remove();
-                console.log('Modal removed');
+            console.log('🚪 closeModal() called');
+            // Find ALL modals and log them
+            const allModals = document.querySelectorAll('.modal');
+            console.log(`Found ${allModals.length} modals:`, Array.from(allModals).map(m => ({
+                id: m.id,
+                className: m.className,
+                display: m.style.display
+            })));
+
+            // Find the active modal (visible one) - this is the one we want to close
+            const activeModal = document.querySelector('.modal.active');
+            console.log('Active modal to close:', activeModal);
+
+            if (activeModal) {
+                activeModal.remove();
+                console.log('✅ Active modal removed');
             } else {
-                console.warn('No modal element found to close');
+                console.warn('⚠️ No active modal found to close');
             }
         } catch (error) {
-            console.error('Error closing modal:', error);
+            console.error('❌ Error closing modal:', error);
         }
     }
 
     saveData() {
-        console.log('💾 Saving data, housing:', {
-            rentalPeriods: this.model.housing.rentalPeriods,
-            ownedProperties: this.model.housing.ownedProperties?.length
+        console.log('💾 saveData() called, currentScenarioId:', this.currentScenarioId);
+        console.log('💾 Current working data - housing:', {
+            rentalPeriods: this.model.housing.rentalPeriods?.length || 0,
+            ownedProperties: this.model.housing.ownedProperties?.length || 0
         });
 
-        localStorage.setItem('financialModel', JSON.stringify({
-            accounts: this.model.accounts,
-            incomes: this.model.incomes,
-            expenses: this.model.expenses,
-            milestones: this.model.milestones,
-            settings: this.model.settings,
-            investmentGlidePath: this.model.investmentGlidePath,
-            withdrawalStrategy: this.model.withdrawalStrategy,
-            scenarios: this.model.scenarios,
-            housing: this.model.housing,
-            debts: this.model.debts,
-            currentScenarioId: this.currentScenarioId // Persist currently viewed scenario
-        }));
+        // Decide what to save based on current state
+        let dataToSave;
+
+        if (this.currentScenarioId === null) {
+            // Viewing base plan - save current working data as base plan
+            console.log('💾 Saving base plan');
+            dataToSave = {
+                basePlan: this.getCurrentPlanData(),
+                scenarios: this.scenarios,
+                currentScenarioId: null
+            };
+        } else {
+            // Viewing a scenario - save base plan (if exists) and scenarios list
+            console.log('💾 Saving while viewing scenario', this.currentScenarioId);
+            dataToSave = {
+                basePlan: this.basePlan || this.getCurrentPlanData(),
+                scenarios: this.scenarios,
+                currentScenarioId: this.currentScenarioId
+            };
+        }
+
+        localStorage.setItem('financialModel', JSON.stringify(dataToSave));
+        console.log('✅ localStorage.setItem completed');
     }
 
     loadData() {
         const data = localStorage.getItem('financialModel');
         if (data) {
             const parsed = JSON.parse(data);
+
+            // NEW FORMAT: basePlan + scenarios list
+            if (parsed.basePlan && parsed.scenarios !== undefined) {
+                console.log('📥 Loading NEW format data');
+                this.scenarios = parsed.scenarios || [];
+
+                // Check if we were viewing a scenario
+                if (parsed.currentScenarioId) {
+                    const scenario = this.scenarios.find(s => s.id === parsed.currentScenarioId);
+                    if (scenario) {
+                        console.log('📥 Restoring scenario view:', parsed.currentScenarioId);
+                        this.basePlan = parsed.basePlan;
+                        this.loadPlanData(scenario.data);
+                        this.currentScenarioId = parsed.currentScenarioId;
+                        return;
+                    }
+                }
+
+                // Load base plan as working data
+                console.log('📥 Loading base plan as working data');
+                this.loadPlanData(parsed.basePlan);
+                this.currentScenarioId = null;
+                return;
+            }
+
+            // OLD FORMAT: all data directly in parsed object
+            console.log('📥 Loading OLD format data - will migrate');
+            console.log('🔍 Raw localStorage housing.rentalPeriods:', parsed.housing?.rentalPeriods);
             this.model.accounts = Array.isArray(parsed.accounts) ? parsed.accounts : [];
             this.model.incomes = (Array.isArray(parsed.incomes) ? parsed.incomes : []).map(inc => ({
                 ...inc,
@@ -5974,7 +5987,7 @@ class UIController {
                 this.model.withdrawalStrategy.taxOptimizedSequence.unshift('cash');
             }
 
-            this.model.scenarios = parsed.scenarios || [];
+            this.scenarios = parsed.scenarios || [];
 
             // Load housing data with migration from old model
             if (parsed.housing) {
@@ -5983,12 +5996,13 @@ class UIController {
                     hasRent: !!parsed.housing.rent,
                     hasRentalPeriods: !!parsed.housing.rentalPeriods,
                     rentalPeriodsLength: parsed.housing.rentalPeriods?.length || 0,
+                    rentalPeriodsRaw: JSON.stringify(parsed.housing.rentalPeriods),
                     ownedPropertiesLength: parsed.housing.ownedProperties?.length || 0
                 });
 
                 // Migration: Convert old housing model (status + rent object) to new model (rentalPeriods array)
                 if (parsed.housing.status === 'rent' && parsed.housing.rent) {
-                    console.warn('Migrating old housing model: converting rent object to rentalPeriods array');
+                    console.warn('⚠️ Migrating old housing model: converting rent object to rentalPeriods array');
                     // Old model: housing.rent is a single object
                     // New model: housing.rentalPeriods is an array
                     this.model.housing.rentalPeriods = [{
@@ -6000,12 +6014,18 @@ class UIController {
                         annualIncrease: parsed.housing.rent.annualIncrease || 3.0,
                         securityDeposit: parsed.housing.rent.securityDeposit || 0
                     }];
-                    console.warn('Created rental period:', this.model.housing.rentalPeriods[0]);
+                    console.warn('✅ Created rental period:', this.model.housing.rentalPeriods[0]);
                 } else if (parsed.housing.rentalPeriods) {
                     // New model already exists
+                    console.log('📥 Loading existing rentalPeriods array:', parsed.housing.rentalPeriods);
                     this.model.housing.rentalPeriods = parsed.housing.rentalPeriods;
+                    console.log('✅ Loaded into model:', {
+                        length: this.model.housing.rentalPeriods.length,
+                        data: this.model.housing.rentalPeriods
+                    });
                 } else {
                     // No rental data
+                    console.log('ℹ️ No rental data in localStorage, initializing empty array');
                     this.model.housing.rentalPeriods = [];
                 }
 
@@ -6063,14 +6083,28 @@ class UIController {
                 this.model.debts = parsed.debts;
             }
 
-            // Restore currently viewed scenario (if it still exists)
+            // Handle scenario restoration for old format
             if (parsed.currentScenarioId) {
-                const scenarioExists = this.model.scenarios.find(s => s.id === parsed.currentScenarioId);
-                if (scenarioExists) {
+                const scenario = this.scenarios.find(s => s.id === parsed.currentScenarioId);
+                if (scenario) {
+                    console.log('📥 OLD FORMAT: Was viewing scenario, loading it now:', parsed.currentScenarioId);
+                    // Save what we just loaded as the base plan
+                    this.basePlan = this.getCurrentPlanData();
+                    // Load the scenario data into working model
+                    this.loadPlanData(scenario.data);
                     this.currentScenarioId = parsed.currentScenarioId;
                 } else {
-                    this.currentScenarioId = null; // Scenario was deleted
+                    console.log('📥 OLD FORMAT: Scenario was deleted, using loaded data as base plan');
+                    this.currentScenarioId = null;
+                    // Recreate projection engine with loaded model
+                    this.projectionEngine = new ProjectionEngine(this.model);
+                    this.simulator = new MonteCarloSimulator(this.model, this.projectionEngine);
                 }
+            } else {
+                console.log('📥 OLD FORMAT: Loading as base plan');
+                // Not viewing a scenario, recreate projection engine with loaded model
+                this.projectionEngine = new ProjectionEngine(this.model);
+                this.simulator = new MonteCarloSimulator(this.model, this.projectionEngine);
             }
         }
     }
@@ -6090,7 +6124,7 @@ class UIController {
             settings: { household: { personA: {}, personB: null }, pension: {} },
             investmentGlidePath: [],
             withdrawalStrategy: {},
-            housing: { status: 'rent', rent: {}, ownedProperties: [] },
+            housing: { rentalPeriods: [], ownedProperties: [] },
             debts: { creditCards: [], loans: [] },
             scenarios: []
         };
@@ -6266,25 +6300,51 @@ class UIController {
                     break;
 
                 case 'HOUSING_RENTAL':
+                    // OLD FORMAT - convert to rental period for backward compatibility
                     const rental = parseRow();
-                    data.housing.status = 'rent';
-                    data.housing.rent = {
+                    if (!data.housing.rentalPeriods) {
+                        data.housing.rentalPeriods = [];
+                    }
+                    data.housing.rentalPeriods.push({
+                        id: Date.now() + Math.random(),
+                        name: 'Rental',
                         monthlyRent: rental.MonthlyRent,
-                        annualIncrease: rental.AnnualIncrease,
                         startYear: rental.StartYear,
                         endYear: null,
+                        annualIncrease: rental.AnnualIncrease,
                         securityDeposit: 0
-                    };
+                    });
+                    break;
+
+                case 'HOUSING_RENTAL_PERIODS':
+                    // NEW FORMAT - rental periods array
+                    const rentalPeriod = parseRow();
+                    if (!data.housing.rentalPeriods) {
+                        data.housing.rentalPeriods = [];
+                    }
+                    data.housing.rentalPeriods.push({
+                        id: Date.now() + Math.random(),
+                        name: rentalPeriod.Name,
+                        monthlyRent: rentalPeriod.MonthlyRent,
+                        startYear: rentalPeriod.StartYear,
+                        endYear: rentalPeriod.EndYear || null,
+                        annualIncrease: rentalPeriod.AnnualIncrease,
+                        securityDeposit: rentalPeriod.SecurityDeposit || 0
+                    });
                     break;
 
                 case 'HOUSING_OWNED':
+                    // OLD FORMAT - for backward compatibility
                     const property = parseRow();
-                    data.housing.status = 'own';
                     const loanAmount = property.PurchasePrice - property.DownPayment;
+                    if (!data.housing.ownedProperties) {
+                        data.housing.ownedProperties = [];
+                    }
                     data.housing.ownedProperties.push({
                         id: Date.now() + Math.random(),
                         name: property.Name,
                         purchaseYear: property.PurchaseYear,
+                        sellYear: null,
                         purchasePrice: property.PurchasePrice,
                         downPayment: property.DownPayment,
                         loanAmount: loanAmount,
@@ -6292,12 +6352,40 @@ class UIController {
                         loanTermYears: property.LoanTermYears,
                         propertyTaxRate: property.PropertyTaxRate,
                         insuranceAnnual: property.InsuranceAnnual,
-                        hoaMonthly: property.HOA_Monthly,
+                        hoaMonthly: property.HOA_Monthly || 0,
                         maintenanceRate: property.MaintenanceRate,
                         appreciationRate: property.AppreciationRate,
                         extraPaymentMonthly: 0,
-                        sellYear: null,
-                        sellingCosts: 0
+                        sellingCosts: 0,
+                        closingCosts: 0
+                    });
+                    break;
+
+                case 'HOUSING_OWNED_PROPERTIES':
+                    // NEW FORMAT - owned properties array
+                    const ownedProperty = parseRow();
+                    const loanAmt = ownedProperty.PurchasePrice - ownedProperty.DownPayment;
+                    if (!data.housing.ownedProperties) {
+                        data.housing.ownedProperties = [];
+                    }
+                    data.housing.ownedProperties.push({
+                        id: Date.now() + Math.random(),
+                        name: ownedProperty.Name,
+                        purchaseYear: ownedProperty.PurchaseYear,
+                        sellYear: ownedProperty.SellYear || null,
+                        purchasePrice: ownedProperty.PurchasePrice,
+                        downPayment: ownedProperty.DownPayment,
+                        loanAmount: loanAmt,
+                        interestRate: ownedProperty.InterestRate,
+                        loanTermYears: ownedProperty.LoanTermYears,
+                        propertyTaxRate: ownedProperty.PropertyTaxRate,
+                        insuranceAnnual: ownedProperty.InsuranceAnnual,
+                        hoaMonthly: ownedProperty.HOA_Monthly || 0,
+                        maintenanceRate: ownedProperty.MaintenanceRate,
+                        appreciationRate: ownedProperty.AppreciationRate,
+                        extraPaymentMonthly: ownedProperty.ExtraPaymentMonthly || 0,
+                        sellingCosts: ownedProperty.SellingCosts || 0,
+                        closingCosts: ownedProperty.ClosingCosts || 0
                     });
                     break;
 
@@ -6444,7 +6532,7 @@ class UIController {
                         data: parsed.data
                     };
 
-                    this.model.scenarios.push(newScenario);
+                    this.scenarios.push(newScenario);
                     this.saveData();
 
                     // Switch to scenarios tab to show the new scenario
@@ -6516,7 +6604,7 @@ class UIController {
                     data: parsed
                 };
 
-                this.model.scenarios.push(newScenario);
+                this.scenarios.push(newScenario);
                 this.saveData();
                 this.closeModal();
 
@@ -6540,7 +6628,7 @@ class UIController {
             withdrawalStrategy: this.model.withdrawalStrategy,
             housing: this.model.housing,
             debts: this.model.debts,
-            scenarios: this.model.scenarios
+            scenarios: this.scenarios
         };
 
         // Export as human-readable/editable CSV (primary export for editing)
@@ -6617,17 +6705,22 @@ class UIController {
         });
         csv += '\n';
 
-        // Housing
-        if (data.housing.status === 'rent' && data.housing.rent.monthlyRent > 0) {
-            csv += '[HOUSING_RENTAL]\n';
-            csv += 'MonthlyRent,AnnualIncrease,StartYear\n';
-            csv += `${data.housing.rent.monthlyRent},${data.housing.rent.annualIncrease},${data.housing.rent.startYear}\n`;
+        // Housing - Rental Periods
+        if (data.housing.rentalPeriods && data.housing.rentalPeriods.length > 0) {
+            csv += '[HOUSING_RENTAL_PERIODS]\n';
+            csv += 'Name,MonthlyRent,StartYear,EndYear,AnnualIncrease,SecurityDeposit\n';
+            data.housing.rentalPeriods.forEach(rental => {
+                csv += `${esc(rental.name)},${rental.monthlyRent},${rental.startYear},${rental.endYear || ''},${rental.annualIncrease},${rental.securityDeposit || 0}\n`;
+            });
             csv += '\n';
-        } else if (data.housing.status === 'own' && data.housing.ownedProperties.length > 0) {
-            csv += '[HOUSING_OWNED]\n';
-            csv += 'Name,PurchaseYear,PurchasePrice,DownPayment,InterestRate,LoanTermYears,PropertyTaxRate,InsuranceAnnual,HOA_Monthly,MaintenanceRate,AppreciationRate\n';
+        }
+
+        // Housing - Owned Properties
+        if (data.housing.ownedProperties && data.housing.ownedProperties.length > 0) {
+            csv += '[HOUSING_OWNED_PROPERTIES]\n';
+            csv += 'Name,PurchaseYear,SellYear,PurchasePrice,DownPayment,InterestRate,LoanTermYears,PropertyTaxRate,InsuranceAnnual,HOA_Monthly,MaintenanceRate,AppreciationRate,ExtraPaymentMonthly,SellingCosts,ClosingCosts\n';
             data.housing.ownedProperties.forEach(prop => {
-                csv += `${esc(prop.name)},${prop.purchaseYear},${prop.purchasePrice},${prop.downPayment},${prop.interestRate},${prop.loanTermYears},${prop.propertyTaxRate},${prop.insuranceAnnual},${prop.hoaMonthly || 0},${prop.maintenanceRate},${prop.appreciationRate}\n`;
+                csv += `${esc(prop.name)},${prop.purchaseYear},${prop.sellYear || ''},${prop.purchasePrice},${prop.downPayment},${prop.interestRate},${prop.loanTermYears},${prop.propertyTaxRate},${prop.insuranceAnnual},${prop.hoaMonthly || 0},${prop.maintenanceRate},${prop.appreciationRate},${prop.extraPaymentMonthly || 0},${prop.sellingCosts || 0},${prop.closingCosts || 0}\n`;
             });
             csv += '\n';
         }
@@ -7903,56 +7996,54 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
     }
 
     saveScenario() {
-        const scenarioName = prompt('Enter a name for this scenario:', `Scenario ${this.model.scenarios.length + 1}`);
+        const scenarioName = prompt('Enter a name for this scenario:', `Scenario ${this.scenarios.length + 1}`);
         if (!scenarioName) return;
 
         const scenario = {
             id: Date.now(),
             name: scenarioName,
             date: new Date().toISOString(),
-            data: JSON.parse(JSON.stringify({
-                accounts: this.model.accounts,
-                incomes: this.model.incomes,
-                expenses: this.model.expenses,
-                milestones: this.model.milestones,
-                settings: this.model.settings,
-                investmentGlidePath: this.model.investmentGlidePath,
-                withdrawalStrategy: this.model.withdrawalStrategy,
-                housing: this.model.housing,
-                debts: this.model.debts
-            }))
+            data: this.getCurrentPlanData()
         };
 
-        this.model.scenarios.push(scenario);
+        this.scenarios.push(scenario);
         this.saveData();
         this.updateScenariosList();
         alert(`✓ Scenario "${scenarioName}" saved!`);
     }
 
+    updateCurrentScenario() {
+        if (!this.currentScenarioId) {
+            alert('No scenario is currently loaded');
+            return;
+        }
+
+        const scenario = this.scenarios.find(s => s.id === this.currentScenarioId);
+        if (!scenario) {
+            alert('Current scenario not found');
+            return;
+        }
+
+        if (confirm(`Update "${scenario.name}" with current changes?`)) {
+            // Update the scenario data with current working data
+            scenario.data = this.getCurrentPlanData();
+            scenario.date = new Date().toISOString(); // Update timestamp
+
+            this.saveData();
+            this.updateScenariosList();
+            alert(`✓ Scenario "${scenario.name}" updated!`);
+        }
+    }
+
     compareScenario(scenarioId) {
-        const compareToScenario = this.model.scenarios.find(s => s.id === scenarioId);
+        const compareToScenario = this.scenarios.find(s => s.id === scenarioId);
         if (!compareToScenario) return;
 
-        // Get the currently viewed scenario data (or base plan if currentScenarioId is null)
-        let currentData;
-        let currentLabel;
-
-        if (this.currentScenarioId) {
-            const currentScenario = this.model.scenarios.find(s => s.id === this.currentScenarioId);
-            if (!currentScenario) return;
-            currentData = currentScenario.data;
-            currentLabel = currentScenario.name;
-        } else {
-            // Viewing base plan
-            currentData = {
-                accounts: this.model.accounts,
-                incomes: this.model.incomes,
-                expenses: this.model.expenses,
-                milestones: this.model.milestones,
-                settings: this.model.settings
-            };
-            currentLabel = "Base Plan";
-        }
+        // Get the currently active working data
+        const currentData = this.getCurrentPlanData();
+        const currentLabel = this.currentScenarioId
+            ? this.scenarios.find(s => s.id === this.currentScenarioId)?.name || "Current Plan"
+            : "Base Plan";
 
         // Store scenario ID for potential future use
         window.currentComparisonScenarioId = scenarioId;
@@ -8474,21 +8565,121 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
     }
 
     viewScenario(scenarioId) {
-        // Switch view to display this scenario's data
+        console.log('🔄 Loading scenario:', scenarioId);
+
+        const scenario = this.scenarios.find(s => s.id === scenarioId);
+        if (!scenario) {
+            console.error('Scenario not found:', scenarioId);
+            return;
+        }
+
+        // Migrate old housing model to new model if needed
+        if (scenario.data.housing) {
+            if (scenario.data.housing.status === 'rent' && scenario.data.housing.rent) {
+                console.log('⚠️ Migrating scenario housing from old to new format');
+                scenario.data.housing = {
+                    rentalPeriods: [{
+                        id: Date.now(),
+                        name: 'Rental',
+                        monthlyRent: scenario.data.housing.rent.monthlyRent || 0,
+                        startYear: scenario.data.housing.rent.startYear || this.model.settings.planStartYear,
+                        endYear: scenario.data.housing.rent.endYear || null,
+                        annualIncrease: scenario.data.housing.rent.annualIncrease || 3.0,
+                        securityDeposit: scenario.data.housing.rent.securityDeposit || 0
+                    }],
+                    ownedProperties: scenario.data.housing.ownedProperties || []
+                };
+            } else if (!scenario.data.housing.rentalPeriods && !scenario.data.housing.ownedProperties) {
+                // Initialize empty arrays if missing
+                scenario.data.housing.rentalPeriods = scenario.data.housing.rentalPeriods || [];
+                scenario.data.housing.ownedProperties = scenario.data.housing.ownedProperties || [];
+            }
+        }
+
+        // Save current working data as base plan if not already saved
+        if (this.currentScenarioId === null && this.basePlan === null) {
+            console.log('💾 Saving current state as base plan');
+            this.basePlan = this.getCurrentPlanData();
+        }
+
+        // Load scenario data into working model
+        console.log('📥 Loading scenario data into working model');
+        this.loadPlanData(scenario.data);
+
+        // Mark this scenario as current
         this.currentScenarioId = scenarioId;
+
+        // Update UI
         this.updateScenarioIndicator();
         this.updateScenariosList();
+        this.updateAllLists(); // Refresh all data lists
         this.updateDashboard();
         this.switchTab('dashboard');
     }
 
     viewBasePlan() {
-        // Switch view back to base plan
+        console.log('🔄 Switching back to base plan');
+
+        // If we have a saved base plan, restore it
+        if (this.basePlan !== null) {
+            console.log('📥 Restoring base plan data');
+            this.loadPlanData(this.basePlan);
+            this.basePlan = null; // Clear the saved base plan
+        }
+
+        // Mark as viewing base plan
         this.currentScenarioId = null;
+
+        // Update UI
         this.updateScenarioIndicator();
         this.updateScenariosList();
+        this.updateAllLists(); // Refresh all data lists
         this.updateDashboard();
         this.switchTab('dashboard');
+    }
+
+    // Get current plan data (everything except scenarios)
+    getCurrentPlanData() {
+        return {
+            accounts: JSON.parse(JSON.stringify(this.model.accounts)),
+            incomes: JSON.parse(JSON.stringify(this.model.incomes)),
+            expenses: JSON.parse(JSON.stringify(this.model.expenses)),
+            milestones: JSON.parse(JSON.stringify(this.model.milestones)),
+            settings: JSON.parse(JSON.stringify(this.model.settings)),
+            investmentGlidePath: JSON.parse(JSON.stringify(this.model.investmentGlidePath)),
+            withdrawalStrategy: JSON.parse(JSON.stringify(this.model.withdrawalStrategy)),
+            housing: JSON.parse(JSON.stringify(this.model.housing)),
+            debts: JSON.parse(JSON.stringify(this.model.debts))
+        };
+    }
+
+    // Load plan data into working model
+    loadPlanData(data) {
+        this.model.accounts = JSON.parse(JSON.stringify(data.accounts || []));
+        this.model.incomes = JSON.parse(JSON.stringify(data.incomes || []));
+        this.model.expenses = JSON.parse(JSON.stringify(data.expenses || []));
+        this.model.milestones = JSON.parse(JSON.stringify(data.milestones || []));
+        this.model.settings = JSON.parse(JSON.stringify(data.settings || this.model.settings));
+        this.model.investmentGlidePath = JSON.parse(JSON.stringify(data.investmentGlidePath || []));
+        this.model.withdrawalStrategy = JSON.parse(JSON.stringify(data.withdrawalStrategy || this.model.withdrawalStrategy));
+        this.model.housing = JSON.parse(JSON.stringify(data.housing || { rentalPeriods: [], ownedProperties: [] }));
+        this.model.debts = JSON.parse(JSON.stringify(data.debts || { creditCards: [], loans: [] }));
+
+        // Recreate projection engine with updated model
+        this.projectionEngine = new ProjectionEngine(this.model);
+        this.simulator = new MonteCarloSimulator(this.model, this.projectionEngine);
+    }
+
+    // Update all data lists in the UI
+    updateAllLists() {
+        this.updateAccountsList();
+        this.updateIncomesList();
+        this.updateExpensesList();
+        this.updateMilestonesList();
+        this.updateRentalPeriodsList();
+        this.updatePropertiesList();
+        this.updateCreditCardsList();
+        this.updateLoansList();
     }
 
     updateScenarioIndicator() {
@@ -8504,7 +8695,7 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         indicator.style.display = 'flex';
 
         if (this.currentScenarioId) {
-            const scenario = this.model.scenarios.find(s => s.id === this.currentScenarioId);
+            const scenario = this.scenarios.find(s => s.id === this.currentScenarioId);
             if (scenario) {
                 // Viewing a saved scenario
                 nameElement.innerHTML = `<strong>${this.escapeHtml(scenario.name)}</strong>`;
@@ -8523,7 +8714,7 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
 
     showBasePlanIndicator(indicator, nameElement) {
         // Show base plan message
-        if (this.model.scenarios.length === 0) {
+        if (this.scenarios.length === 0) {
             nameElement.innerHTML = '<strong>Base Plan</strong> <span style="color: var(--text-secondary); font-weight: 400; font-size: 14px;">(Create scenarios on the Scenarios tab to compare alternatives)</span>';
         } else {
             nameElement.innerHTML = '<strong>Base Plan</strong> <span style="color: var(--text-secondary); font-weight: 400; font-size: 14px;">(Switch to a saved scenario on the Scenarios tab)</span>';
@@ -8533,27 +8724,27 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
     }
 
     deleteScenario(scenarioId) {
-        const scenario = this.model.scenarios.find(s => s.id === scenarioId);
+        const scenario = this.scenarios.find(s => s.id === scenarioId);
         if (!scenario) return;
 
         const confirmed = confirm(`Delete scenario "${scenario.name}"?`);
         if (!confirmed) return;
 
-        this.model.scenarios = this.model.scenarios.filter(s => s.id !== scenarioId);
+        this.scenarios = this.scenarios.filter(s => s.id !== scenarioId);
         this.saveData();
         this.updateScenariosList();
     }
 
     clearScenarios() {
-        if (this.model.scenarios.length === 0) {
+        if (this.scenarios.length === 0) {
             alert('No scenarios to clear.');
             return;
         }
 
-        const confirmed = confirm(`Delete all ${this.model.scenarios.length} saved scenarios?\n\nThis cannot be undone.`);
+        const confirmed = confirm(`Delete all ${this.scenarios.length} saved scenarios?\n\nThis cannot be undone.`);
         if (!confirmed) return;
 
-        this.model.scenarios = [];
+        this.scenarios = [];
         this.saveData();
         this.updateScenariosList();
         alert('✓ All scenarios cleared.');
@@ -8563,14 +8754,14 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
         const container = document.getElementById('scenariosList');
         const comparisonCard = document.getElementById('scenarioComparisonCard');
 
-        if (this.model.scenarios.length === 0) {
+        if (this.scenarios.length === 0) {
             container.innerHTML = '<p style="color: #64748b; padding: 20px; text-align: center;">No saved scenarios yet. Save your current plan as a scenario to get started!</p>';
             comparisonCard.style.display = 'none';
             return;
         }
 
         container.innerHTML = '<div class="item-list">' +
-            this.model.scenarios.map(scenario => {
+            this.scenarios.map(scenario => {
                 const date = new Date(scenario.date).toLocaleDateString();
                 const isCurrent = this.currentScenarioId === scenario.id;
                 const currentBadge = isCurrent ? '<span style="background: var(--success); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 8px; font-weight: 600;">CURRENT</span>' : '';
@@ -8583,7 +8774,8 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
                             <p>Saved on ${date}</p>
                         </div>
                         <div class="list-item-actions">
-                            <button class="btn btn-primary" onclick="ui.viewScenario(${scenario.id})" ${isCurrent ? 'disabled' : ''}>View</button>
+                            <button class="btn btn-primary" onclick="ui.viewScenario(${scenario.id})" ${isCurrent ? 'disabled' : ''}>Load</button>
+                            ${isCurrent ? `<button class="btn btn-success" onclick="ui.updateCurrentScenario()">Update</button>` : ''}
                             <button class="btn btn-secondary" onclick="ui.compareScenario(${scenario.id})">Compare</button>
                             <button class="btn btn-danger" onclick="ui.deleteScenario(${scenario.id})">Delete</button>
                         </div>
@@ -8593,7 +8785,7 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
             '</div>';
 
         // Show comparison chart if we have multiple scenarios
-        if (this.model.scenarios.length >= 2) {
+        if (this.scenarios.length >= 2) {
             comparisonCard.style.display = 'block';
             this.updateScenarioComparisonChart();
         } else {
@@ -8617,7 +8809,7 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
 
         const datasets = [];
 
-        this.model.scenarios.forEach((scenario, index) => {
+        this.scenarios.forEach((scenario, index) => {
             // Create a temporary model with this scenario's data
             const tempModel = new FinancialModel();
             tempModel.accounts = scenario.data.accounts;
@@ -8716,7 +8908,7 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
                 this.model.investmentGlidePath = [
                     { startYear: new Date().getFullYear(), expectedReturn: 7, volatility: 15 }
                 ];
-                this.model.scenarios = [];
+                this.scenarios = [];
                 this.model.withdrawalStrategy = {
                     type: 'fixed_percentage',
                     withdrawalPercentage: 4,
