@@ -5753,10 +5753,20 @@ class UIController {
                 // Migration: Fix properties missing loanAmount and monthlyPayment
                 if (this.model.housing.ownedProperties) {
                     this.model.housing.ownedProperties.forEach(property => {
-                        if (property.loanAmount === undefined || property.loanAmount === null) {
+                        // Check if loanAmount is missing or if monthlyPayment is undefined (indicates corrupted data)
+                        const needsMigration =
+                            property.loanAmount === undefined ||
+                            property.loanAmount === null ||
+                            property.monthlyPayment === undefined ||
+                            property.monthlyPayment === null;
+
+                        if (needsMigration) {
+                            console.warn(`Migrating property "${property.name}": old loanAmount=${property.loanAmount}, old monthlyPayment=${property.monthlyPayment}`);
+                            console.warn(`Property details: purchasePrice=${property.purchasePrice}, downPayment=${property.downPayment}, interestRate=${property.interestRate}, loanTermYears=${property.loanTermYears}`);
+
                             const loanAmount = (property.purchasePrice || 0) - (property.downPayment || 0);
                             property.loanAmount = loanAmount;
-                            console.warn(`Migrating property "${property.name}": calculated loanAmount=${loanAmount}`);
+                            console.warn(`Calculated loanAmount=${loanAmount}`);
 
                             // Recalculate monthly payment
                             if (loanAmount > 0 && property.interestRate > 0 && property.loanTermYears > 0) {
@@ -5764,9 +5774,10 @@ class UIController {
                                 const numPayments = property.loanTermYears * 12;
                                 property.monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) /
                                     (Math.pow(1 + monthlyRate, numPayments) - 1);
-                                console.warn(`Migrating property "${property.name}": calculated monthlyPayment=${property.monthlyPayment}`);
+                                console.warn(`Calculated monthlyPayment=${property.monthlyPayment}`);
                             } else {
                                 property.monthlyPayment = 0;
+                                console.warn(`Set monthlyPayment=0 (cash purchase or invalid loan data)`);
                             }
                         }
                     });
