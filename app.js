@@ -5749,6 +5749,28 @@ class UIController {
             // Load housing data
             if (parsed.housing) {
                 this.model.housing = parsed.housing;
+
+                // Migration: Fix properties missing loanAmount and monthlyPayment
+                if (this.model.housing.ownedProperties) {
+                    this.model.housing.ownedProperties.forEach(property => {
+                        if (property.loanAmount === undefined || property.loanAmount === null) {
+                            const loanAmount = (property.purchasePrice || 0) - (property.downPayment || 0);
+                            property.loanAmount = loanAmount;
+                            console.warn(`Migrating property "${property.name}": calculated loanAmount=${loanAmount}`);
+
+                            // Recalculate monthly payment
+                            if (loanAmount > 0 && property.interestRate > 0 && property.loanTermYears > 0) {
+                                const monthlyRate = property.interestRate / 100 / 12;
+                                const numPayments = property.loanTermYears * 12;
+                                property.monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) /
+                                    (Math.pow(1 + monthlyRate, numPayments) - 1);
+                                console.warn(`Migrating property "${property.name}": calculated monthlyPayment=${property.monthlyPayment}`);
+                            } else {
+                                property.monthlyPayment = 0;
+                            }
+                        }
+                    });
+                }
             }
 
             // Load debts data
