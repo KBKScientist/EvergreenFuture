@@ -3178,7 +3178,7 @@ class UIController {
                     if (amount > 0.01) { // Only show significant amounts
                         const label = typeLabels[accountType] || accountType; // Fallback to raw type if not in map
                         incomeSources.push({
-                            name: label + ' Withdrawal',
+                            name: label, // No "Withdrawal" suffix - context is clear from flow
                             amount: amount,
                             category: 'withdrawal_' + accountType  // Special category for withdrawal colors
                         });
