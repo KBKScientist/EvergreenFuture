@@ -4559,11 +4559,17 @@ class UIController {
 
     addProperty() {
         const sellYearValue = document.getElementById('sellYear').value;
+
+        const purchasePrice = parseFloat(document.getElementById('purchasePrice').value) || 0;
+        const downPayment = parseFloat(document.getElementById('downPayment').value) || 0;
+
+        console.log(`Adding property: purchasePrice=${purchasePrice}, downPayment=${downPayment}, loanAmount=${purchasePrice - downPayment}`);
+
         const property = {
             name: document.getElementById('propertyName').value,
             purchaseYear: parseInt(document.getElementById('purchaseYear').value),
-            purchasePrice: parseFloat(document.getElementById('purchasePrice').value),
-            downPayment: parseFloat(document.getElementById('downPayment').value),
+            purchasePrice: purchasePrice,
+            downPayment: downPayment,
             closingCosts: parseFloat(document.getElementById('closingCosts').value) || 0,
             interestRate: parseFloat(document.getElementById('interestRate').value),
             loanTermYears: parseInt(document.getElementById('loanTermYears').value),
