@@ -661,6 +661,10 @@ class ProjectionEngine {
                         maintenanceCost += maintenance;
 
                         housingCosts += mortgageCost + propertyTaxCost + insuranceCost + hoaCost + maintenanceCost;
+
+                        if (year === this.model.settings.planStartYear) {
+                            console.log(`Housing costs for ${year}: mortgageCost=${mortgageCost}, propertyTax=${propertyTax}, insurance=${insurance}, hoa=${hoaCost}, maintenance=${maintenance}, total=${housingCosts}`);
+                        }
                         homeValue += currentHomeValue;
                         mortgageBalance += mortgageData.balance;
                     }
