@@ -5612,11 +5612,11 @@ class UIController {
             closeBtn.addEventListener('click', () => this.closeModal());
         }
 
-        document.getElementById('cancelCardBtn').addEventListener('click', () => this.closeModal());
+        document.getElementById('cancelCardBtn').addEventListener('click', () => this.closeModal(), { once: true });
         document.getElementById('saveCardBtn').addEventListener('click', () => {
             if (isEdit) this.updateCreditCard(card.id);
             else this.addCreditCard();
-        });
+        }, { once: true });
     }
 
     showLoanModal(loan = null) {
@@ -5713,11 +5713,11 @@ class UIController {
             closeBtn.addEventListener('click', () => this.closeModal());
         }
 
-        document.getElementById('cancelLoanBtn').addEventListener('click', () => this.closeModal());
+        document.getElementById('cancelLoanBtn').addEventListener('click', () => this.closeModal(), { once: true });
         document.getElementById('saveLoanBtn').addEventListener('click', () => {
             if (isEdit) this.updateLoan(loan.id);
             else this.addLoan();
-        });
+        }, { once: true });
 
         // Add loan payoff calculator
         const updatePayoffCalculator = () => {
@@ -8055,10 +8055,12 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
             };
 
             this.scenarios.push(scenario);
+            this.currentScenarioId = scenario.id;  // Set newly saved scenario as current
             this.saveData();
             this.updateScenariosList();
+            this.updateScenarioIndicator();  // Update the banner
             this.closeModal();
-            alert(`✓ Scenario "${name}" saved!`);
+            alert(`✓ Scenario "${name}" saved and set as current!`);
         });
 
         // Allow Enter key to save in the name field
