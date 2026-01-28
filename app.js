@@ -3413,8 +3413,11 @@ class UIController {
         if (netSavings > 0.01) {
             // Surplus year - add savings node (money flows OUT from Total Income)
             const savingsNodeId = nodeId++;
+            // In retirement (when withdrawing), label as "Investment Growth" instead of "Savings"
+            const hasWithdrawals = (yearData.withdrawals || 0) > 0;
+            const savingsLabel = hasWithdrawals ? 'Investment Growth' : 'Savings/Investments';
             nodes.push({
-                name: 'Savings/Investments',
+                name: savingsLabel,
                 type: 'savings'
             });
             links.push({
