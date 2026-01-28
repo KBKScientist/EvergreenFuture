@@ -6,6 +6,8 @@
 
 **🌲 Plan your financial future**
 
+**💚 [Try it now!](https://kbkscientist.github.io/EvergreenFuture/)** | **[Support this project on Venmo](https://venmo.com/thatguykbk)**
+
 ---
 
 ## 🚀 Quick Start
