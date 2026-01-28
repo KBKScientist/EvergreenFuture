@@ -5611,7 +5611,7 @@ class UIController {
         // Add event listeners
         const closeBtn = modal.querySelector('.close-modal');
         if (closeBtn) {
-            closeBtn.addEventListener('click', () => this.closeModal());
+            closeBtn.addEventListener('click', () => this.closeModal(), { once: true });
         }
 
         document.getElementById('cancelCardBtn').addEventListener('click', () => this.closeModal(), { once: true });
@@ -5712,7 +5712,7 @@ class UIController {
         // Add event listeners
         const closeBtn = modal.querySelector('.close-modal');
         if (closeBtn) {
-            closeBtn.addEventListener('click', () => this.closeModal());
+            closeBtn.addEventListener('click', () => this.closeModal(), { once: true });
         }
 
         document.getElementById('cancelLoanBtn').addEventListener('click', () => this.closeModal(), { once: true });
@@ -5740,22 +5740,26 @@ class UIController {
             let currentBalance = balance;
             const maxYears = Math.min(termYears, 40); // Cap at 40 years for display
 
-            for (let year = 0; year <= maxYears; year++) {
-                const targetYear = startYear + year;
-                const monthsElapsed = year * 12;
+            // Add starting balance
+            projections.push({ year: startYear, balance: Math.round(currentBalance) });
 
-                // Calculate balance at this year
-                let yearBalance = balance;
-                for (let m = 0; m < monthsElapsed; m++) {
-                    const interest = yearBalance * monthlyRate;
+            for (let year = 1; year <= maxYears; year++) {
+                const targetYear = startYear + year;
+
+                // Calculate balance after 12 months of payments
+                for (let m = 0; m < 12; m++) {
+                    const interest = currentBalance * monthlyRate;
                     const principal = payment - interest;
-                    yearBalance -= principal;
-                    if (yearBalance <= 0) break;
+                    currentBalance -= principal;
+                    if (currentBalance <= 0) {
+                        currentBalance = 0;
+                        break;
+                    }
                 }
 
-                if (yearBalance > 0) {
-                    projections.push({ year: targetYear, balance: Math.round(yearBalance) });
-                } else {
+                projections.push({ year: targetYear, balance: Math.round(currentBalance) });
+
+                if (currentBalance <= 0) {
                     break; // Loan is paid off
                 }
             }
@@ -5763,9 +5767,11 @@ class UIController {
             if (projections.length === 0) {
                 document.getElementById('payoffProjections').innerHTML = 'Loan will be paid off before next year 🎉';
             } else {
-                let html = '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">';
-                projections.forEach(p => {
-                    html += `<div><strong>${p.year}:</strong> $${p.balance.toLocaleString()}</div>`;
+                let html = '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-height: 200px; overflow-y: auto;">';
+                projections.forEach((p, idx) => {
+                    const isPaidOff = p.balance === 0;
+                    const style = isPaidOff ? 'color: var(--success); font-weight: 600;' : '';
+                    html += `<div style="${style}"><strong>${p.year}:</strong> $${p.balance.toLocaleString()}${isPaidOff ? ' ✓' : ''}</div>`;
                 });
                 html += '</div>';
                 document.getElementById('payoffProjections').innerHTML = html;
@@ -5773,7 +5779,7 @@ class UIController {
         };
 
         // Update calculator when fields change
-        ['loanBalance', 'loanRate', 'loanPayment', 'loanStartYear'].forEach(id => {
+        ['loanBalance', 'loanRate', 'loanPayment', 'loanStartYear', 'loanTerm'].forEach(id => {
             const elem = document.getElementById(id);
             if (elem) {
                 elem.addEventListener('input', updatePayoffCalculator);
