@@ -965,7 +965,9 @@ class ProjectionEngine {
             } else if (contributions > 0 && inDrawdownPhase) {
                 // Drawdown phase: Don't contribute - the excess income already reduced withdrawal amount
                 // This prevents the confusing "withdraw from savings while also depositing" scenario
+                // CRITICAL: Set contributions to 0 so balance reconciliation works correctly
                 console.log(`Year ${year}: In drawdown phase - excess income of $${contributions.toLocaleString()} reducing withdrawal need (not contributing)`);
+                contributions = 0; // Clear this so it doesn't affect balance calculation
             }
 
             // Windfalls (inheritance, gifts, etc.) - always contribute these to taxable/cash accounts
