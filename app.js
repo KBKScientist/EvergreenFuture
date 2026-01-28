@@ -944,8 +944,12 @@ class ProjectionEngine {
             });
 
             // Apply contributions
-            // Regular contributions (from salary) - distribute proportionally to maintain allocation
-            if (contributions > 0) {
+            // IMPORTANT: Only contribute if we're in accumulation phase (before retirement)
+            // Once in drawdown phase, excess income should reduce withdrawals, not create contributions
+            const inDrawdownPhase = year >= withdrawalStartYear;
+
+            if (contributions > 0 && !inDrawdownPhase) {
+                // Accumulation phase: Regular contributions (from salary) - distribute proportionally to maintain allocation
                 const totalBalance = this.getTotalBalance(accountBalances);
                 if (totalBalance > 0) {
                     accountBalances.forEach(acc => {
@@ -958,9 +962,14 @@ class ProjectionEngine {
                         accountBalances[0].balance += contributions;
                     }
                 }
+            } else if (contributions > 0 && inDrawdownPhase) {
+                // Drawdown phase: Don't contribute - the excess income already reduced withdrawal amount
+                // This prevents the confusing "withdraw from savings while also depositing" scenario
+                console.log(`Year ${year}: In drawdown phase - excess income of $${contributions.toLocaleString()} reducing withdrawal need (not contributing)`);
             }
 
-            // Windfalls (inheritance, gifts, etc.) - only go to taxable/cash accounts, not retirement accounts
+            // Windfalls (inheritance, gifts, etc.) - always contribute these to taxable/cash accounts
+            // Even in drawdown phase, windfalls should be added (they're one-time events, not regular income)
             if (windfallContributions > 0) {
                 // Find taxable and cash accounts
                 const taxableAccounts = accountBalances.filter(acc =>
