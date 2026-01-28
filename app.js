@@ -7264,15 +7264,16 @@ Tax-Optimized Sequence: ${data.withdrawalStrategy.taxOptimizedSequence.join(' â†
             },
 
             "housing": {
-                "status": this.model.housing.status,
-                "rental": this.model.housing.status === 'rent' && this.model.housing.rent ? {
-                    "monthly_rent": this.model.housing.rent.monthlyRent,
-                    "annual_rent": this.model.housing.rent.monthlyRent * 12,
-                    "start_year": this.model.housing.rent.startYear,
-                    "end_year": this.model.housing.rent.endYear,
-                    "inflation_rate": this.model.housing.rent.inflationRate,
-                    "_note": "Rent increases annually by inflation_rate"
-                } : null,
+                "rental_periods": this.model.housing.rentalPeriods.map(rental => ({
+                    "name": rental.name,
+                    "monthly_rent": rental.monthlyRent,
+                    "annual_rent": rental.monthlyRent * 12,
+                    "start_year": rental.startYear,
+                    "end_year": rental.endYear || "ongoing",
+                    "annual_increase_rate": rental.annualIncrease,
+                    "security_deposit": rental.securityDeposit,
+                    "_note": "Rent increases annually by annual_increase_rate"
+                })),
                 "owned_properties": this.model.housing.ownedProperties.map(prop => ({
                     "name": prop.name,
                     "purchase_year": prop.purchaseYear,
