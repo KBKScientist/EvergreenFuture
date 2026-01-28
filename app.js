@@ -8673,7 +8673,7 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
     // Update all data lists in the UI
     updateAllLists() {
         this.updateAccountsList();
-        this.updateIncomesList();
+        this.updateIncomeList();
         this.updateExpensesList();
         this.updateMilestonesList();
         this.updateRentalPeriodsList();
