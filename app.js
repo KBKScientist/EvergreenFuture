@@ -638,7 +638,15 @@ class ProjectionEngine {
 
             // Calculate rent costs from all active rental periods
             if (this.model.housing.rentalPeriods && this.model.housing.rentalPeriods.length > 0) {
+                if (year === this.model.settings.planStartYear) {
+                    console.log(`Checking ${this.model.housing.rentalPeriods.length} rental periods for year ${year}`);
+                }
+
                 this.model.housing.rentalPeriods.forEach(rental => {
+                    if (year === this.model.settings.planStartYear) {
+                        console.log(`Rental "${rental.name}": startYear=${rental.startYear}, endYear=${rental.endYear}, monthlyRent=${rental.monthlyRent}`);
+                    }
+
                     if (year >= rental.startYear && (!rental.endYear || year <= rental.endYear)) {
                         const yearsSinceStart = year - rental.startYear;
                         const adjustedRent = rental.monthlyRent * Math.pow(1 + rental.annualIncrease / 100, yearsSinceStart);
@@ -647,7 +655,7 @@ class ProjectionEngine {
                         housingCosts += annualRent;
 
                         if (year === this.model.settings.planStartYear) {
-                            console.log(`Rental period "${rental.name}" active: $${adjustedRent}/mo = $${annualRent}/yr`);
+                            console.log(`✅ Rental period "${rental.name}" ACTIVE: $${Math.round(adjustedRent)}/mo = $${Math.round(annualRent)}/yr`);
                         }
                     }
                 });
@@ -4663,7 +4671,10 @@ class UIController {
             securityDeposit: parseFloat(document.getElementById('rentalSecurityDeposit').value) || 0
         };
 
+        console.log('Adding rental period:', rental);
         this.model.addRentalPeriod(rental);
+        console.log('Total rental periods after add:', this.model.housing.rentalPeriods.length);
+
         this.closeModal();
         this.updateRentalPeriodsList();
         this.updateDashboard();
