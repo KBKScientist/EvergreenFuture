@@ -926,6 +926,8 @@ class ProjectionEngine {
             // - Cash accounts: use their fixed interest rate (typically 3-5%)
             // - Investment accounts (taxable, traditional, roth, hsa): use glide path rate (8% → 6% → 4%)
             let totalInvestmentReturns = 0;
+            let returnsByType = {}; // Track returns by account type for Sankey diagram
+
             accountBalances.forEach(acc => {
                 let accountReturnRate;
 
@@ -941,6 +943,12 @@ class ProjectionEngine {
                 const accountReturns = acc.balance * accountReturnRate;
                 acc.balance += accountReturns;
                 totalInvestmentReturns += accountReturns;
+
+                // Track returns by account type
+                if (!returnsByType[acc.type]) {
+                    returnsByType[acc.type] = 0;
+                }
+                returnsByType[acc.type] += accountReturns;
             });
 
             // Apply contributions
@@ -1156,6 +1164,7 @@ class ProjectionEngine {
                 withdrawalsByType, // Track breakdown by account type (taxable, traditional, roth, hsa)
                 withdrawalShortfall,
                 investmentReturns: totalInvestmentReturns,
+                returnsByType, // Track investment returns breakdown by account type for Sankey
                 endBalance,
                 netWorth,
                 income: annualIncome,
@@ -3193,6 +3202,30 @@ class UIController {
                     category: 'withdrawal_general'
                 });
             }
+        }
+
+        // Add investment returns by account type as income sources
+        // This shows which accounts are generating returns (important for understanding cash flow in retirement)
+        if (yearData.returnsByType && Object.keys(yearData.returnsByType).length > 0) {
+            const typeLabels = {
+                cash: 'Cash/Savings',
+                taxable: 'Taxable Brokerage',
+                traditional: 'Traditional IRA/401k',
+                roth: 'Roth IRA',
+                hsa: 'HSA'
+            };
+
+            Object.keys(yearData.returnsByType).forEach(accountType => {
+                const amount = yearData.returnsByType[accountType];
+                if (amount > 0.01) { // Only show significant amounts
+                    const label = typeLabels[accountType] || accountType;
+                    incomeSources.push({
+                        name: label + ' Returns',
+                        amount: amount,
+                        category: 'investment'  // Use investment category for returns
+                    });
+                }
+            });
         }
 
         // Taxable milestone income (e.g., student loan forgiveness "tax bombs")
