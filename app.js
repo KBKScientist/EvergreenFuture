@@ -8768,11 +8768,16 @@ fixed_percentage,4.0,true,0,73,,as_needed`,
                 const currentBadge = isCurrent ? '<span style="background: var(--success); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 8px; font-weight: 600;">CURRENT</span>' : '';
                 const highlightStyle = isCurrent ? 'border: 2px solid var(--success); background: rgba(16, 185, 129, 0.05);' : '';
 
+                const descriptionHtml = scenario.description
+                    ? `<p style="color: #64748b; font-size: 14px; margin-top: 8px; font-style: italic;">${this.escapeHtml(scenario.description)}</p>`
+                    : '';
+
                 return `
                     <div class="list-item" style="${highlightStyle}">
                         <div class="list-item-info">
                             <h3>${scenario.name}${currentBadge}</h3>
                             <p>Saved on ${date}</p>
+                            ${descriptionHtml}
                         </div>
                         <div class="list-item-actions">
                             <button class="btn btn-primary" onclick="ui.viewScenario(${scenario.id})" ${isCurrent ? 'disabled' : ''}>Load</button>
