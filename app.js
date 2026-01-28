@@ -33,25 +33,22 @@ class FinancialModel {
                 growth: 0
             }
         };
+        // Housing - supports multiple rental periods and owned properties with date ranges
         this.housing = {
-            status: 'rent', // 'rent' or 'own'
-            // Rental properties
-            rent: {
-                monthlyRent: 0,
-                startYear: new Date().getFullYear(),
-                endYear: null, // null = ongoing
-                annualIncrease: 3.0, // rent inflation %
-                securityDeposit: 0
-            },
-            // Owned properties (can have multiple)
+            rentalPeriods: [],
+            // Each rental period: {
+            //     id, name, monthlyRent, startYear, endYear,
+            //     annualIncrease, securityDeposit
+            // }
             ownedProperties: []
-            // Each owned property has:
-            // {
-            //     id, name, purchaseYear, purchasePrice, downPayment, loanAmount,
-            //     interestRate, loanTermYears, monthlyPayment, propertyTaxRate,
-            //     insuranceAnnual, hoaMonthly, maintenanceRate,
-            //     appreciationRate, extraPaymentMonthly, lumpSumPayoffs: [{year, amount}],
-            //     sellYear, sellingCosts
+            // Each owned property: {
+            //     id, name, purchaseYear, sellYear,
+            //     purchasePrice, downPayment, loanAmount,
+            //     interestRate, loanTermYears, monthlyPayment,
+            //     propertyTaxRate, insuranceAnnual, hoaMonthly,
+            //     maintenanceRate, appreciationRate,
+            //     extraPaymentMonthly, lumpSumPayoffs: [{year, amount}],
+            //     sellingCosts, closingCosts
             // }
         };
 
@@ -155,6 +152,18 @@ class FinancialModel {
             isTaxable: milestone.isTaxable || false,
             taxableAmount: parseFloat(milestone.taxableAmount) || 0,
             taxCategory: milestone.taxCategory || null // 'loan_forgiveness', 'bonus', etc.
+        });
+    }
+
+    addRentalPeriod(rental) {
+        this.housing.rentalPeriods.push({
+            id: Date.now(),
+            name: rental.name || 'Rental',
+            monthlyRent: parseFloat(rental.monthlyRent),
+            startYear: parseInt(rental.startYear, 10),
+            endYear: rental.endYear ? parseInt(rental.endYear, 10) : null, // null = ongoing
+            annualIncrease: parseFloat(rental.annualIncrease) || 3.0, // rent inflation %
+            securityDeposit: parseFloat(rental.securityDeposit) || 0
         });
     }
 
@@ -616,6 +625,7 @@ class ProjectionEngine {
             });
 
             // Calculate housing costs for this year (broken down by component)
+            // New model: supports multiple rental periods and owned properties simultaneously
             let housingCosts = 0;
             let homeValue = 0;
             let mortgageBalance = 0;
@@ -626,27 +636,40 @@ class ProjectionEngine {
             let hoaCost = 0;
             let maintenanceCost = 0;
 
-            if (this.model.housing.status === 'rent' && this.model.housing.rent.monthlyRent > 0) {
-                const rent = this.model.housing.rent;
-                if (year >= rent.startYear && (!rent.endYear || year <= rent.endYear)) {
-                    const yearsSinceStart = year - rent.startYear;
-                    const adjustedRent = rent.monthlyRent * Math.pow(1 + rent.annualIncrease / 100, yearsSinceStart);
-                    rentCost = adjustedRent * 12;
-                    housingCosts = rentCost;
+            // Calculate rent costs from all active rental periods
+            if (this.model.housing.rentalPeriods && this.model.housing.rentalPeriods.length > 0) {
+                this.model.housing.rentalPeriods.forEach(rental => {
+                    if (year >= rental.startYear && (!rental.endYear || year <= rental.endYear)) {
+                        const yearsSinceStart = year - rental.startYear;
+                        const adjustedRent = rental.monthlyRent * Math.pow(1 + rental.annualIncrease / 100, yearsSinceStart);
+                        const annualRent = adjustedRent * 12;
+                        rentCost += annualRent;
+                        housingCosts += annualRent;
+
+                        if (year === this.model.settings.planStartYear) {
+                            console.log(`Rental period "${rental.name}" active: $${adjustedRent}/mo = $${annualRent}/yr`);
+                        }
+                    }
+                });
+            }
+
+            // Calculate costs from all owned properties
+            if (this.model.housing.ownedProperties && this.model.housing.ownedProperties.length > 0) {
+                if (year === this.model.settings.planStartYear) {
+                    console.log(`Found ${this.model.housing.ownedProperties.length} owned properties`);
                 }
-            } else if (this.model.housing.status === 'own') {
-                if (year === this.model.settings.planStartYear && this.model.housing.ownedProperties.length > 0) {
-                    console.log(`Housing status: own, Found ${this.model.housing.ownedProperties.length} properties`);
-                }
+
                 this.model.housing.ownedProperties.forEach(property => {
                     if (year >= property.purchaseYear && (!property.sellYear || year < property.sellYear)) {
                         if (year === this.model.settings.planStartYear) {
                             console.log(`Property "${property.name}" active in year ${year}, purchase year: ${property.purchaseYear}`);
                             console.log(`Property data: loanAmount=${property.loanAmount}, monthlyPayment=${property.monthlyPayment}, interestRate=${property.interestRate}, loanTermYears=${property.loanTermYears}`);
                         }
+
                         // Calculate current home value with appreciation
                         const currentHomeValue = this.calculateHomeValueForYear(property, year);
                         const mortgageData = this.calculateMortgageBalanceForYear(property, year);
+
                         if (year === this.model.settings.planStartYear) {
                             console.log(`Mortgage data: balance=${mortgageData.balance}, monthlyPayment=${mortgageData.monthlyPayment}`);
                         }
@@ -664,11 +687,13 @@ class ProjectionEngine {
                         hoaCost += hoa;
                         maintenanceCost += maintenance;
 
-                        housingCosts += mortgageCost + propertyTaxCost + insuranceCost + hoaCost + maintenanceCost;
+                        const propertyCosts = (monthlyPayment * 12) + propertyTax + insurance + hoa + maintenance;
+                        housingCosts += propertyCosts;
 
                         if (year === this.model.settings.planStartYear) {
-                            console.log(`Housing costs for ${year}: mortgageCost=${mortgageCost}, propertyTax=${propertyTax}, insurance=${insurance}, hoa=${hoaCost}, maintenance=${maintenance}, total=${housingCosts}`);
+                            console.log(`Housing costs for "${property.name}" in ${year}: mortgage=$${monthlyPayment * 12}, propertyTax=$${propertyTax}, insurance=$${insurance}, hoa=$${hoa}, maintenance=$${maintenance}, total=$${propertyCosts}`);
                         }
+
                         homeValue += currentHomeValue;
                         mortgageBalance += mortgageData.balance;
                     }
@@ -1909,16 +1934,9 @@ class UIController {
         document.getElementById('addMilestoneBtn').addEventListener('click', () => this.showMilestoneModal());
 
         // Housing management
-        const housingStatusRadios = document.getElementsByName('housingStatus');
-        if (housingStatusRadios.length > 0) {
-            housingStatusRadios.forEach(radio => {
-                radio.addEventListener('change', (e) => this.toggleHousingStatus(e.target.value));
-            });
-        }
-
-        const saveRentalBtn = document.getElementById('saveRentalBtn');
-        if (saveRentalBtn) {
-            saveRentalBtn.addEventListener('click', () => this.saveRentalInfo());
+        const addRentalPeriodBtn = document.getElementById('addRentalPeriodBtn');
+        if (addRentalPeriodBtn) {
+            addRentalPeriodBtn.addEventListener('click', () => this.showRentalPeriodModal());
         }
 
         const addPropertyBtn = document.getElementById('addPropertyBtn');
@@ -2038,15 +2056,9 @@ class UIController {
         } else if (tabName === 'scenarios') {
             this.updateScenariosList();
         } else if (tabName === 'housing') {
+            // Load rental periods and properties lists
+            this.updateRentalPeriodsList();
             this.updatePropertiesList();
-            // Set housing status radio buttons
-            const status = this.model.housing.status;
-            document.querySelector(`input[name="housingStatus"][value="${status}"]`).checked = true;
-            document.getElementById('rentalSection').style.display = status === 'rent' ? 'block' : 'none';
-            document.getElementById('ownershipSection').style.display = status === 'own' ? 'block' : 'none';
-            // Load rental info
-            document.getElementById('monthlyRent').value = this.model.housing.rent.monthlyRent;
-            document.getElementById('rentIncrease').value = this.model.housing.rent.annualIncrease;
         } else if (tabName === 'debts') {
             this.updateCreditCardsList();
             this.updateLoansList();
@@ -4538,23 +4550,164 @@ class UIController {
         this.saveData();
     }
 
-    toggleHousingStatus(status) {
-        this.model.housing.status = status;
-        document.getElementById('rentalSection').style.display = status === 'rent' ? 'block' : 'none';
-        document.getElementById('ownershipSection').style.display = status === 'own' ? 'block' : 'none';
+    showRentalPeriodModal(rental = null) {
+        const isEdit = rental !== null;
+        const modal = document.getElementById('modal');
+
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="close-modal">&times;</span>
+                <h2>${isEdit ? 'Edit' : 'Add'} Rental Period</h2>
+
+                <div class="form-group">
+                    <label>Name / Description</label>
+                    <input type="text" id="rentalName" value="${rental?.name || 'Rental'}" placeholder="e.g., Downtown Apartment">
+                </div>
+
+                <div class="form-group">
+                    <label>Monthly Rent ($)</label>
+                    <input type="number" id="rentalMonthlyRent" value="${rental?.monthlyRent || 0}" step="100">
+                </div>
+
+                <div class="form-group">
+                    <label>Start Year</label>
+                    <input type="number" id="rentalStartYear" value="${rental?.startYear || this.model.settings.planStartYear}">
+                </div>
+
+                <div class="form-group">
+                    <label>End Year (leave empty for ongoing)</label>
+                    <input type="number" id="rentalEndYear" value="${rental?.endYear || ''}" placeholder="Optional">
+                    <small>Leave blank if you're still renting or don't know when it will end</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Annual Rent Increase (%)</label>
+                    <input type="number" id="rentalIncrease" value="${rental?.annualIncrease || 3.0}" step="0.1">
+                    <small>Typical: 3-5% per year</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Security Deposit ($)</label>
+                    <input type="number" id="rentalSecurityDeposit" value="${rental?.securityDeposit || 0}">
+                    <small>One-time payment when you move in (year ${rental?.startYear || this.model.settings.planStartYear})</small>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" id="cancelRentalBtn">Cancel</button>
+                    <button class="btn btn-primary" id="saveRentalBtn">${isEdit ? 'Update' : 'Add'}</button>
+                </div>
+            </div>
+        `;
+
+        modal.style.display = 'block';
+
+        // Add event listeners
+        setTimeout(() => {
+            const closeBtn = modal.querySelector('.close-modal');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => this.closeModal());
+            }
+
+            const cancelBtn = document.getElementById('cancelRentalBtn');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => this.closeModal());
+            }
+
+            const saveBtn = document.getElementById('saveRentalBtn');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', () => {
+                    if (isEdit) this.updateRentalPeriod(rental.id);
+                    else this.addRentalPeriod();
+                }, { once: true });
+            }
+        }, 0);
+    }
+
+    addRentalPeriod() {
+        const endYearValue = document.getElementById('rentalEndYear').value;
+
+        const rental = {
+            name: document.getElementById('rentalName').value,
+            monthlyRent: parseFloat(document.getElementById('rentalMonthlyRent').value) || 0,
+            startYear: parseInt(document.getElementById('rentalStartYear').value),
+            endYear: endYearValue ? parseInt(endYearValue) : null,
+            annualIncrease: parseFloat(document.getElementById('rentalIncrease').value) || 3.0,
+            securityDeposit: parseFloat(document.getElementById('rentalSecurityDeposit').value) || 0
+        };
+
+        this.model.addRentalPeriod(rental);
+        this.closeModal();
+        this.updateRentalPeriodsList();
         this.updateDashboard();
         this.saveData();
     }
 
-    saveRentalInfo() {
-        this.model.housing.rent = {
-            monthlyRent: parseFloat(document.getElementById('monthlyRent').value) || 0,
-            annualIncrease: parseFloat(document.getElementById('rentIncrease').value) || 3.0,
-            startYear: this.model.settings.planStartYear,
-            endYear: null
-        };
+    updateRentalPeriod(id) {
+        const rental = this.model.housing.rentalPeriods.find(r => r.id === id);
+        if (!rental) return;
+
+        const endYearValue = document.getElementById('rentalEndYear').value;
+
+        rental.name = document.getElementById('rentalName').value;
+        rental.monthlyRent = parseFloat(document.getElementById('rentalMonthlyRent').value) || 0;
+        rental.startYear = parseInt(document.getElementById('rentalStartYear').value);
+        rental.endYear = endYearValue ? parseInt(endYearValue) : null;
+        rental.annualIncrease = parseFloat(document.getElementById('rentalIncrease').value) || 3.0;
+        rental.securityDeposit = parseFloat(document.getElementById('rentalSecurityDeposit').value) || 0;
+
+        this.closeModal();
+        this.updateRentalPeriodsList();
         this.updateDashboard();
         this.saveData();
+    }
+
+    deleteRentalPeriod(id) {
+        if (confirm('Are you sure you want to delete this rental period?')) {
+            this.model.housing.rentalPeriods = this.model.housing.rentalPeriods.filter(r => r.id !== id);
+            this.updateRentalPeriodsList();
+            this.updateDashboard();
+            this.saveData();
+        }
+    }
+
+    updateRentalPeriodsList() {
+        const container = document.getElementById('rentalPeriodsList');
+        if (!container) return;
+
+        if (this.model.housing.rentalPeriods.length === 0) {
+            container.innerHTML = '<p style="color: #999; font-style: italic;">No rental periods added yet</p>';
+            return;
+        }
+
+        container.innerHTML = this.model.housing.rentalPeriods
+            .sort((a, b) => a.startYear - b.startYear)
+            .map(rental => {
+                const endYearText = rental.endYear ? rental.endYear : 'Ongoing';
+                const duration = rental.endYear ? `${rental.endYear - rental.startYear + 1} years` : 'Ongoing';
+
+                return `
+                    <div class="list-item" style="margin-bottom: 10px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0 0 8px 0;">${rental.name}</h4>
+                                <p style="margin: 4px 0; color: #666;">
+                                    <strong>$${rental.monthlyRent.toLocaleString()}/mo</strong>
+                                    (${rental.startYear} - ${endYearText})
+                                    <span style="color: #999;">• ${duration}</span>
+                                </p>
+                                <p style="margin: 4px 0; font-size: 14px; color: #888;">
+                                    Annual increase: ${rental.annualIncrease}%
+                                    ${rental.securityDeposit > 0 ? ` • Security deposit: $${rental.securityDeposit.toLocaleString()}` : ''}
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-secondary btn-sm" onclick="ui.showRentalPeriodModal(${JSON.stringify(rental).replace(/"/g, '&quot;')})">Edit</button>
+                                <button class="btn btn-danger btn-sm" onclick="ui.deleteRentalPeriod(${rental.id})">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
     }
 
     addProperty() {
@@ -4642,21 +4795,41 @@ class UIController {
         const container = document.getElementById('propertiesList');
         if (!container) return;
 
-        container.innerHTML = '<div class="item-list">' +
-            this.model.housing.ownedProperties.map(property => `
-                <div class="list-item">
-                    <div class="list-item-info">
-                        <h3>${property.name}</h3>
-                        <p>Purchase: $${property.purchasePrice.toLocaleString()} - Down: $${property.downPayment.toLocaleString()}</p>
-                        <p>Loan: $${property.loanAmount.toLocaleString()} @ ${property.interestRate}% (${property.loanTermYears} years)</p>
+        if (this.model.housing.ownedProperties.length === 0) {
+            container.innerHTML = '<p style="color: #999; font-style: italic;">No owned properties added yet</p>';
+            return;
+        }
+
+        container.innerHTML = this.model.housing.ownedProperties
+            .sort((a, b) => a.purchaseYear - b.purchaseYear)
+            .map(property => {
+                const sellYearText = property.sellYear ? property.sellYear : 'Ongoing';
+                const duration = property.sellYear ? `${property.sellYear - property.purchaseYear} years` : 'Ongoing';
+
+                return `
+                    <div class="list-item" style="margin-bottom: 10px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0 0 8px 0;">${property.name}</h4>
+                                <p style="margin: 4px 0; color: #666;">
+                                    <strong>$${property.purchasePrice.toLocaleString()}</strong> purchase
+                                    (${property.purchaseYear} - ${sellYearText})
+                                    <span style="color: #999;">• ${duration}</span>
+                                </p>
+                                <p style="margin: 4px 0; font-size: 14px; color: #888;">
+                                    Down: $${property.downPayment.toLocaleString()}
+                                    • Loan: $${property.loanAmount.toLocaleString()} @ ${property.interestRate}%
+                                    ${property.monthlyPayment ? ` • $${Math.round(property.monthlyPayment).toLocaleString()}/mo` : ''}
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-secondary btn-sm" onclick="ui.showPropertyModal(${JSON.stringify(property).replace(/"/g, '&quot;')})">Edit</button>
+                                <button class="btn btn-danger btn-sm" onclick="ui.deleteProperty(${property.id})">Delete</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="list-item-actions">
-                        <button class="btn btn-secondary" onclick="ui.showPropertyModal(${JSON.stringify(property).replace(/"/g, '&quot;')})">Edit</button>
-                        <button class="btn btn-danger" onclick="ui.deleteProperty(${property.id})">Delete</button>
-                    </div>
-                </div>
-            `).join('') +
-        '</div>';
+                `;
+            }).join('');
     }
 
     addCreditCard() {
@@ -5746,9 +5919,37 @@ class UIController {
 
             this.model.scenarios = parsed.scenarios || [];
 
-            // Load housing data
+            // Load housing data with migration from old model
             if (parsed.housing) {
-                this.model.housing = parsed.housing;
+                // Migration: Convert old housing model (status + rent object) to new model (rentalPeriods array)
+                if (parsed.housing.status === 'rent' && parsed.housing.rent) {
+                    console.warn('Migrating old housing model: converting rent object to rentalPeriods array');
+                    // Old model: housing.rent is a single object
+                    // New model: housing.rentalPeriods is an array
+                    this.model.housing.rentalPeriods = [{
+                        id: Date.now(),
+                        name: 'Rental',
+                        monthlyRent: parsed.housing.rent.monthlyRent || 0,
+                        startYear: parsed.housing.rent.startYear || this.model.settings.planStartYear,
+                        endYear: parsed.housing.rent.endYear || null,
+                        annualIncrease: parsed.housing.rent.annualIncrease || 3.0,
+                        securityDeposit: parsed.housing.rent.securityDeposit || 0
+                    }];
+                    console.warn('Created rental period:', this.model.housing.rentalPeriods[0]);
+                } else if (parsed.housing.rentalPeriods) {
+                    // New model already exists
+                    this.model.housing.rentalPeriods = parsed.housing.rentalPeriods;
+                } else {
+                    // No rental data
+                    this.model.housing.rentalPeriods = [];
+                }
+
+                // Load owned properties (works with both old and new models)
+                if (parsed.housing.ownedProperties) {
+                    this.model.housing.ownedProperties = parsed.housing.ownedProperties;
+                } else {
+                    this.model.housing.ownedProperties = [];
+                }
 
                 // Migration: Fix properties missing loanAmount and monthlyPayment
                 if (this.model.housing.ownedProperties) {
