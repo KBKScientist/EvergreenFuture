@@ -6594,7 +6594,7 @@ class UIController {
                 if (e.key === 'Enter') {
                     document.getElementById('createScenarioBtn').click();
                 }
-            });
+            }, { once: true });
 
             document.getElementById('createScenarioBtn').addEventListener('click', () => {
                 const name = document.getElementById('scenarioNameInput').value.trim();
@@ -6622,7 +6622,7 @@ class UIController {
                 this.viewScenario(newScenario.id);
 
                 alert(`✓ Scenario "${name}" imported!\n\nYou're now viewing this scenario. Go to the Scenarios tab to switch between scenarios.`);
-            });
+            }, { once: true });
         }, 0);
     }
 
