@@ -2464,31 +2464,59 @@ class UIController {
         let housingMetrics = '';
         let debtMetrics = '';
 
-        if (dataModel.housing.status === 'rent' && dataModel.housing.rent.monthlyRent > 0) {
-            const annualRent = dataModel.housing.rent.monthlyRent * 12;
-            housingMetrics = `
+        // Calculate current housing costs based on active periods
+        const currentYear = dataModel.settings.planStartYear;
+        let totalRentCost = 0;
+        let totalHomeValue = 0;
+        let totalMortgageBalance = 0;
+
+        // Calculate active rental costs
+        if (dataModel.housing.rentalPeriods) {
+            dataModel.housing.rentalPeriods.forEach(rental => {
+                if (currentYear >= rental.startYear && (!rental.endYear || currentYear <= rental.endYear)) {
+                    const yearsSinceStart = currentYear - rental.startYear;
+                    const adjustedRent = rental.monthlyRent * Math.pow(1 + rental.annualIncrease / 100, yearsSinceStart);
+                    totalRentCost += adjustedRent * 12;
+                }
+            });
+        }
+
+        // Calculate active owned property values
+        if (dataModel.housing.ownedProperties) {
+            dataModel.housing.ownedProperties.forEach(property => {
+                if (currentYear >= property.purchaseYear && (!property.sellYear || currentYear < property.sellYear)) {
+                    const homeValue = engine.calculateHomeValueForYear(property, currentYear);
+                    const mortgageData = engine.calculateMortgageBalanceForYear(property, currentYear);
+                    totalHomeValue += homeValue;
+                    totalMortgageBalance += mortgageData.balance;
+                }
+            });
+        }
+
+        // Build housing metrics HTML
+        const housingItems = [];
+        if (totalRentCost > 0) {
+            housingItems.push(`
                 <div class="stat-item">
-                    <div class="stat-label">Housing (Rent)</div>
-                    <div class="stat-value">$${annualRent.toLocaleString()}/yr</div>
+                    <div class="stat-label">Rent</div>
+                    <div class="stat-value">$${Math.round(totalRentCost).toLocaleString()}/yr</div>
                 </div>
-            `;
-        } else if (dataModel.housing.status === 'own' && dataModel.housing.ownedProperties.length > 0) {
-            const property = dataModel.housing.ownedProperties[0];
-            const year = dataModel.settings.planStartYear;
-            const homeValue = engine.calculateHomeValueForYear(property, year);
-            const mortgageData = engine.calculateMortgageBalanceForYear(property, year);
-            const equity = homeValue - mortgageData.balance;
-            housingMetrics = `
+            `);
+        }
+        if (totalHomeValue > 0) {
+            const equity = totalHomeValue - totalMortgageBalance;
+            housingItems.push(`
                 <div class="stat-item">
                     <div class="stat-label">Home Value</div>
-                    <div class="stat-value">$${homeValue.toLocaleString()}</div>
+                    <div class="stat-value">$${Math.round(totalHomeValue).toLocaleString()}</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-label">Home Equity</div>
-                    <div class="stat-value">$${equity.toLocaleString()}</div>
+                    <div class="stat-value">$${Math.round(equity).toLocaleString()}</div>
                 </div>
-            `;
+            `);
         }
+        housingMetrics = housingItems.join('');
 
         const totalCreditCardDebt = dataModel.debts.creditCards.reduce((sum, card) => sum + card.balance, 0);
         const totalLoanDebt = dataModel.debts.loans.reduce((sum, loan) => sum + loan.balance, 0);
