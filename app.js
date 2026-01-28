@@ -4580,10 +4580,10 @@ class UIController {
 
     showRentalPeriodModal(rental = null) {
         const isEdit = rental !== null;
-        const modal = document.getElementById('modal');
-
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
         modal.innerHTML = `
-            <div class="modal-content">
+            <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
                 <span class="close-modal">&times;</span>
                 <h2>${isEdit ? 'Edit' : 'Add'} Rental Period</h2>
 
@@ -4627,7 +4627,7 @@ class UIController {
             </div>
         `;
 
-        modal.style.display = 'block';
+        document.body.appendChild(modal);
 
         // Add event listeners
         setTimeout(() => {
