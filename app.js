@@ -5835,6 +5835,11 @@ class UIController {
     }
 
     saveData() {
+        console.log('💾 Saving data, housing:', {
+            rentalPeriods: this.model.housing.rentalPeriods,
+            ownedProperties: this.model.housing.ownedProperties?.length
+        });
+
         localStorage.setItem('financialModel', JSON.stringify({
             accounts: this.model.accounts,
             incomes: this.model.incomes,
@@ -5973,6 +5978,14 @@ class UIController {
 
             // Load housing data with migration from old model
             if (parsed.housing) {
+                console.log('📂 Loading housing data from localStorage:', {
+                    hasStatus: !!parsed.housing.status,
+                    hasRent: !!parsed.housing.rent,
+                    hasRentalPeriods: !!parsed.housing.rentalPeriods,
+                    rentalPeriodsLength: parsed.housing.rentalPeriods?.length || 0,
+                    ownedPropertiesLength: parsed.housing.ownedProperties?.length || 0
+                });
+
                 // Migration: Convert old housing model (status + rent object) to new model (rentalPeriods array)
                 if (parsed.housing.status === 'rent' && parsed.housing.rent) {
                     console.warn('Migrating old housing model: converting rent object to rentalPeriods array');
