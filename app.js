@@ -637,6 +637,14 @@ class ProjectionEngine {
             let maintenanceCost = 0;
 
             // Calculate rent costs from all active rental periods
+            if (year === this.model.settings.planStartYear) {
+                console.log(`🏠 Housing data:`, {
+                    rentalPeriods: this.model.housing.rentalPeriods,
+                    rentalPeriodsLength: this.model.housing.rentalPeriods?.length || 0,
+                    ownedProperties: this.model.housing.ownedProperties?.length || 0
+                });
+            }
+
             if (this.model.housing.rentalPeriods && this.model.housing.rentalPeriods.length > 0) {
                 if (year === this.model.settings.planStartYear) {
                     console.log(`Checking ${this.model.housing.rentalPeriods.length} rental periods for year ${year}`);
@@ -5812,9 +5820,14 @@ class UIController {
 
     closeModal() {
         try {
+            console.log('closeModal() called');
             const modal = document.querySelector('.modal');
+            console.log('Found modal element:', modal);
             if (modal) {
                 modal.remove();
+                console.log('Modal removed');
+            } else {
+                console.warn('No modal element found to close');
             }
         } catch (error) {
             console.error('Error closing modal:', error);
